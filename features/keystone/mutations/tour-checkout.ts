@@ -171,7 +171,7 @@ export async function lookupBooking(_r: any, args: any, context: any) {
 }
 
 // Money path shared by cancel, refund, and departure cancellation. The provider call sits outside DB locks.
-export async function issueRefund(prisma: any, a: { bookingId: string; amount: number; reason: string; key: string; actorId: string | null; cancel?: boolean; approvalId?: string | null; requestedById?: string | null }) {
+export async function issueRefund(prisma: any, a: { bookingId: string; amount: number; reason: string; key: string; actorId: string | null; cancel?: boolean; approvalId?: string | null; requestedById?: string | null; approvalThresholdCents?: number }) {
   const reservation = await prisma.$transaction(async (tx: any) => {
     const b = await tx.booking.findUnique({ where: { id: a.bookingId } });
     await lockTransactionKey(tx, `departure:${b.departureId}`);
@@ -182,7 +182,14 @@ export async function issueRefund(prisma: any, a: { bookingId: string; amount: n
     if (!payment) { if (a.amount === 0 || live.totalCents === 0 || live.channelId) return { refund: null, payment: null, booking: live }; throw new Error('No captured payment to refund'); }
     if (!Number.isSafeInteger(a.amount) || a.amount < 0 || a.amount > payment.amount - (payment.refundedAmount || 0)) throw new Error('Refund exceeds captured amount');
     if (a.amount === 0) return { refund: null, payment, booking: live };
-    const refund = await tx.refund.create({ data: { idempotencyKey: a.key, amount: a.amount, currencyCode: payment.currencyCode, status: 'processing', reason: a.reason || 'Refund', paymentId: payment.id, orderId: b.id, requestedById: a.requestedById || a.actorId, approvedById: a.approvalId ? (await tx.managerApproval.findUnique({ where: { id: a.approvalId } }))?.approvedById : null } });
+    // The approval is consumed only after the lock, the replay check and amount validation, in this same transaction,
+    // so a failed or replayed request never burns it.
+    let approvedById: string | null = null;
+    if (a.approvalThresholdCents !== undefined && a.amount > a.approvalThresholdCents) {
+      const approval = await consumeManagerApproval(tx, { actionType: 'refund_booking', targetId: b.id, reason: a.reason, amount: a.amount, approvalId: a.approvalId, actorId: a.actorId, entityType: 'Booking', entityId: b.id });
+      approvedById = approval.approvedById;
+    }
+    const refund = await tx.refund.create({ data: { idempotencyKey: a.key, amount: a.amount, currencyCode: payment.currencyCode, status: 'processing', reason: a.reason || 'Refund', paymentId: payment.id, orderId: b.id, requestedById: a.requestedById || a.actorId, approvedById } });
     await audit(tx, a.actorId, 'refund.reserved', 'Refund', refund.id, null, { amount: a.amount }, a.reason, a.key);
     return { refund, payment, booking: live };
   }, { timeout: 20000 });
@@ -242,13 +249,10 @@ export async function refundBooking(_r: any, args: any, context: any) {
   const booking = await context.prisma.booking.findUnique({ where: { id: i.bookingId } });
   if (!booking || !LIVE.includes(booking.status)) throw new Error('Booking cannot be refunded');
   const settings = await context.prisma.storeSettings.findFirst();
-  const needsApproval = i.amountCents > (settings?.refundApprovalThresholdCents ?? 10000);
   if (!i.reason?.trim()) throw new Error('Reason required');
-  if (needsApproval) {
-    await context.prisma.$transaction(async (tx: any) => consumeManagerApproval(tx, { actionType: 'refund_booking', targetId: booking.id, reason: i.reason, amount: i.amountCents, approvalId: i.approvalId, actorId: user.id, entityType: 'Booking', entityId: booking.id }), { isolationLevel: 'Serializable' });
-  }
-  await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId: i.approvalId });
-  return { bookingRef: booking.bookingRef };
+  await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId: i.approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
+  const refund = await context.prisma.refund.findUnique({ where: { idempotencyKey: `refund:${args.idempotencyKey}` } });
+  return { bookingRef: booking.bookingRef, refundId: refund?.id || null };
 }
 
 export async function cancelDeparture(_r: any, args: any, context: any) {
