@@ -5314,6 +5314,8 @@ type Query {
   redirectToInit: Boolean
   tourTotal: Int
   operatorName: String
+  checkoutHold(holdId: ID!, token: String!): JSON
+  waiverForToken(token: String!): JSON
   departuresInRange(from: String!, to: String!): JSON
   departureManifest(departureId: ID!): JSON
   toursOnSale: JSON

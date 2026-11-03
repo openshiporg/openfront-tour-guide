@@ -369,3 +369,11 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
     return { tasks, closed };
   });
 }
+
+// Public: the held quote for the guest who holds the proof, for the checkout page.
+export async function checkoutHold(_r: any, args: any, context: any) {
+  const hold = await context.prisma.inventoryHold.findUnique({ where: { id: args.holdId }, include: { booking: true } });
+  if (!hold) throw new Error('Booking not found');
+  assertProof(String(args.token || ''), hold.cartTokenHash);
+  return { id: hold.id, status: hold.status, expiresAt: hold.expiresAt, quote: hold.quote, bookingRef: hold.booking?.bookingRef || null };
+}

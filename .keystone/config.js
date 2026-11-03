@@ -1659,16 +1659,27 @@ async function releaseHoldPromos(tx, holdIds) {
   if (holdIds.length) await tx.promoRedemption.updateMany({ where: { holdId: { in: holdIds }, status: "reserved" }, data: { status: "released" } });
 }
 async function toursOnSale(_root, _args, context) {
-  return context.prisma.tour.findMany({ where: { status: "active", departures: { some: { startAt: { gt: /* @__PURE__ */ new Date() }, status: { in: ["on_sale", "confirmed", "min_not_met"] } } } }, select: { id: true, name: true, slug: true, description: true, durationMinutes: true, images: true, ticketTypes: { where: { active: true }, select: { id: true, name: true, priceCents: true, currencyCode: true } } }, take: 100 });
+  return context.prisma.tour.findMany({ where: { status: "active", departures: { some: { startAt: { gt: /* @__PURE__ */ new Date() }, status: { in: ["on_sale", "confirmed", "min_not_met"] } } } }, select: { id: true, name: true, slug: true, description: true, durationMinutes: true, images: true, kind: true, minAge: true, highlights: true, whatToBring: true, meetingPoint: { select: { name: true, address: true, instructions: true } }, addOns: { select: { id: true, name: true, priceCents: true, perPerson: true } }, requiresWaiverId: true, cancellationPolicy: { select: { rules: true, weatherFullRefund: true } }, ticketTypes: { where: { active: true }, select: { id: true, name: true, priceCents: true, currencyCode: true } } }, take: 100 });
 }
 async function tourAvailability(_root, args, context) {
   const from = new Date(args.from), to = new Date(args.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from || to.getTime() - from.getTime() > 92 * 864e5) throw new Error("Choose a valid date range of at most 92 days");
   const rows = await context.prisma.departure.findMany({ where: { tourId: args.tourId, tour: { status: "active" }, startAt: { gte: from, lte: to }, status: { in: ["on_sale", "confirmed", "min_not_met", "full"] } }, select: { id: true, startAt: true, endAt: true, capacity: true, bookingCutoffMinutes: true }, take: 500, orderBy: { startAt: "asc" } });
+  const ids = rows.map((r) => r.id);
+  const LIVE3 = ["confirmed", "checked_in", "completed", "no_show"];
+  const [booked, held, channels, channelSold] = await Promise.all([
+    context.prisma.booking.groupBy({ by: ["departureId"], where: { departureId: { in: ids }, status: { in: LIVE3 } }, _sum: { seats: true } }),
+    context.prisma.inventoryHold.groupBy({ by: ["departureId"], where: { departureId: { in: ids }, status: "active", expiresAt: { gt: /* @__PURE__ */ new Date() } }, _sum: { quantity: true } }),
+    context.prisma.channel.findMany({ where: { active: true, allocation: { gt: 0 } } }),
+    context.prisma.booking.groupBy({ by: ["departureId", "channelId"], where: { departureId: { in: ids }, channelId: { not: null }, status: { in: LIVE3 } }, _sum: { seats: true } })
+  ]);
+  const sum = (rows2, id, key) => rows2.find((r) => r.departureId === id)?._sum[key] || 0;
   const result = [];
-  for (const row of rows) if (row.startAt.getTime() - row.bookingCutoffMinutes * 6e4 > Date.now()) {
-    const o = await departureOccupancy(context.prisma, row.id);
-    result.push({ ...row, remaining: o.remaining });
+  for (const row of rows) {
+    if (row.startAt.getTime() - row.bookingCutoffMinutes * 6e4 <= Date.now()) continue;
+    const far = row.startAt.getTime() - Date.now() > 864e5;
+    const reserved = far ? channels.reduce((n, c) => n + Math.max(0, c.allocation - (channelSold.find((x) => x.departureId === row.id && x.channelId === c.id)?._sum.seats || 0)), 0) : 0;
+    result.push({ ...row, remaining: Math.max(0, row.capacity - sum(booked, row.id, "seats") - sum(held, row.id, "quantity") - reserved) });
   }
   return result;
 }
@@ -1728,6 +1739,20 @@ async function placeHold(tx, input, actorId, requestId, channelId, ttlMs = 6e5) 
   if (promo) await tx.promoRedemption.create({ data: { promoCodeId: promo.id, holdId: hold.id, amountCents: discountCents, currencyCode: quote.currencyCode, status: "reserved" } });
   await audit(tx, actorId, "hold.created", "InventoryHold", hold.id, null, { seats, departureId: d.id }, "", requestId);
   return { holdId: hold.id, expiresAt: hold.expiresAt, quote };
+}
+function plainText(node) {
+  if (!node) return "";
+  if (Array.isArray(node)) return node.map(plainText).join("\n");
+  if (typeof node.text === "string") return node.text;
+  return plainText(node.children);
+}
+async function waiverForToken(_root, args, context) {
+  const participant = await context.prisma.participant.findFirst({ where: { waiverTokenHash: hashToken(String(args.token || "")) }, include: { booking: true } });
+  if (!participant) throw new Error("Waiver link not valid");
+  const templateId = participant.booking.tourSnapshot?.waiverTemplateId;
+  const template = templateId && await context.prisma.waiverTemplate.findUnique({ where: { id: templateId } });
+  if (!template || template.status !== "published") throw new Error("Waiver unavailable");
+  return { participantName: participant.fullName, status: participant.waiverStatus, name: template.name, version: template.version, text: plainText(template.body), tourName: participant.booking.tourSnapshot?.name };
 }
 
 // features/keystone/mutations/tour-checkout.ts
@@ -2352,6 +2377,12 @@ async function sweepDepartures(_r, args, context) {
     return { tasks, closed };
   });
 }
+async function checkoutHold(_r, args, context) {
+  const hold = await context.prisma.inventoryHold.findUnique({ where: { id: args.holdId }, include: { booking: true } });
+  if (!hold) throw new Error("Booking not found");
+  assertProof(String(args.token || ""), hold.cartTokenHash);
+  return { id: hold.id, status: hold.status, expiresAt: hold.expiresAt, quote: hold.quote, bookingRef: hold.booking?.bookingRef || null };
+}
 
 // features/keystone/lib/resourceCapacity.ts
 function milliseconds(value) {
@@ -2880,6 +2911,8 @@ function extendGraphqlSchema(baseSchema) {
         redirectToInit: Boolean
         tourTotal: Int
         operatorName: String
+        checkoutHold(holdId: ID!, token: String!): JSON
+        waiverForToken(token: String!): JSON
         departuresInRange(from: String!, to: String!): JSON
         departureManifest(departureId: ID!): JSON
         toursOnSale: JSON
@@ -2914,7 +2947,7 @@ function extendGraphqlSchema(baseSchema) {
       }
     `,
     resolvers: {
-      Query: { redirectToInit: redirectToInit_default, departuresInRange, departureManifest, operatorName: async (_r, _a, c) => c.session?.itemId ? (await c.sudo().query.StoreSettings.findMany({ take: 1, query: "name" }))[0]?.name || null : null, tourTotal: async (_r, _a, c) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { redirectToInit: redirectToInit_default, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r, _a, c) => c.session?.itemId ? (await c.sudo().query.StoreSettings.findMany({ take: 1, query: "name" }))[0]?.name || null : null, tourTotal: async (_r, _a, c) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold,
         startBookingCheckout,
