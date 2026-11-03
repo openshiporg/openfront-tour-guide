@@ -1,0 +1,56 @@
+{
+  "settings": { "name": "Harbor Lights Tours", "timezone": "America/New_York", "address": "Charleston, SC", "currencyCode": "USD", "refundApprovalThresholdCents": 10000, "taxBps": 0 },
+  "paymentProvider": { "name": "Stripe", "code": "pp_stripe" },
+  "roles": [
+    { "name": "Operations Manager", "permissions": ["canAccessDashboard", "canManageTours", "canManageDepartures", "canManageBookings", "canManageGuides", "canManageResources", "canManageChannels", "canManagePromos", "canManageWaivers", "canManageCustomers", "canCheckIn", "canReadMedicalNotes", "canReadPayments", "canReadAudit"] },
+    { "name": "Guide", "permissions": ["canAccessDashboard", "canCheckIn", "canReadMedicalNotes"] },
+    { "name": "Customer", "permissions": [] }
+  ],
+  "meetingPoints": [
+    { "name": "Waterfront Park Fountain", "address": "1 Vendue Range, Charleston, SC", "instructions": "Meet at the pineapple fountain 10 minutes early." },
+    { "name": "Harbor Lights Dock", "address": "360 Concord St, Charleston, SC", "instructions": "Check in at the dock office." },
+    { "name": "Market Street Gate", "address": "188 Meeting St, Charleston, SC", "instructions": "Look for the guide with the lantern." }
+  ],
+  "cancellationPolicies": [
+    { "name": "Standard 24 hour", "rules": [{ "hoursBefore": 24, "refundBps": 10000 }, { "hoursBefore": 0, "refundBps": 0 }], "weatherFullRefund": true },
+    { "name": "Flexible 48 hour", "rules": [{ "hoursBefore": 48, "refundBps": 10000 }, { "hoursBefore": 12, "refundBps": 5000 }, { "hoursBefore": 0, "refundBps": 0 }], "weatherFullRefund": true }
+  ],
+  "waiver": { "name": "Activity release", "version": 1, "text": "I understand the risks of the activity, confirm that I am fit to take part and agree to follow guide instructions." },
+  "promoCodes": [{ "code": "HARBOR10", "discountType": "percent_bps", "value": 1000, "maxUses": 200 }],
+  "channels": [
+    { "name": "Coastline Travel Partners", "commissionBps": 2000, "paymentModel": "channel_collects", "contact": "bookings@coastline.example", "allocation": 4 },
+    { "name": "Lowcountry Concierge", "commissionBps": 1500, "paymentModel": "we_collect", "contact": "desk@lowcountry.example", "allocation": 0 }
+  ],
+  "resources": [
+    { "name": "Van A", "kind": "van", "seats": 14, "quantity": 1 },
+    { "name": "Van B", "kind": "van", "seats": 14, "quantity": 1 },
+    { "name": "Harbor Kayak Pool", "kind": "kayak", "seats": 1, "quantity": 16 },
+    { "name": "Miss Carolina", "kind": "boat", "seats": 24, "quantity": 1 }
+  ],
+  "guides": [
+    { "name": "Maya Brooks", "languages": ["English", "Spanish"], "certs": ["First Aid", "Water Safety"], "payRateType": "per_tour", "payRateCents": 12000 },
+    { "name": "Daniel Okafor", "languages": ["English"], "certs": ["First Aid", "Water Safety"], "payRateType": "per_tour", "payRateCents": 11000 },
+    { "name": "Priya Raman", "languages": ["English", "Hindi"], "certs": ["First Aid", "Water Safety"], "payRateType": "per_tour", "payRateCents": 11500 },
+    { "name": "Luis Ferreira", "languages": ["English", "Portuguese"], "certs": ["First Aid", "Water Safety"], "payRateType": "hourly", "payRateCents": 2800 },
+    { "name": "Hannah Whitaker", "languages": ["English", "French"], "certs": ["First Aid"], "expiringCert": "First Aid", "payRateType": "per_tour", "payRateCents": 10000 },
+    { "name": "Marcus Lee", "languages": ["English"], "certs": ["First Aid", "CDL"], "payRateType": "hourly", "payRateCents": 3000 },
+    { "name": "Elena Rossi", "languages": ["English", "Italian"], "certs": ["First Aid"], "payRateType": "per_tour", "payRateCents": 10500 },
+    { "name": "Tom Gallagher", "languages": ["English"], "certs": ["First Aid", "CDL"], "payRateType": "hourly", "payRateCents": 3000 }
+  ],
+  "tours": [
+    { "name": "Historic Charleston Walking Tour", "slug": "historic-walking", "kind": "walking", "description": "Cobblestone lanes, church spires and stories of the old city.", "durationMinutes": 90, "minParticipants": 2, "maxParticipants": 14, "guideRatio": 12, "resource": "none", "meetingPoint": 0, "policy": 0, "waiver": false, "startTimes": ["10:00", "14:00"], "rrule": "FREQ=DAILY", "minimal": true,
+      "tickets": [{ "name": "Adult", "priceCents": 3500 }, { "name": "Child 6-12", "priceCents": 1800, "minAge": 6, "maxAge": 12 }, { "name": "Senior", "priceCents": 3000, "minAge": 65 }], "addOns": [] },
+    { "name": "Taste of the Lowcountry Food Tour", "slug": "food-tour", "kind": "food", "description": "Six stops for shrimp and grits, pralines and more.", "durationMinutes": 180, "minParticipants": 4, "maxParticipants": 12, "guideRatio": 8, "resource": "none", "meetingPoint": 2, "policy": 1, "waiver": false, "startTimes": ["11:30"], "rrule": "FREQ=WEEKLY;BYDAY=TU,WE,TH,FR,SA",
+      "tickets": [{ "name": "Adult", "priceCents": 8500 }, { "name": "Child 6-12", "priceCents": 5500, "minAge": 6, "maxAge": 12 }], "addOns": [{ "name": "Wine pairing", "priceCents": 2500, "perPerson": true }] },
+    { "name": "Sunset Kayak Paddle", "slug": "sunset-kayak", "kind": "water", "description": "Paddle the marsh at golden hour.", "durationMinutes": 120, "minParticipants": 2, "maxParticipants": 16, "guideRatio": 8, "resource": "kayak", "meetingPoint": 1, "policy": 0, "waiver": true, "certs": ["Water Safety"], "minAge": 10, "startTimes": ["18:00"], "rrule": "FREQ=DAILY",
+      "tickets": [{ "name": "Single kayak", "priceCents": 6500 }, { "name": "Tandem kayak", "priceCents": 11000, "seatsUsed": 2 }], "addOns": [{ "name": "Wetsuit rental", "priceCents": 1500, "perPerson": true }] },
+    { "name": "Dolphin Watch Boat Tour", "slug": "dolphin-boat", "kind": "water", "description": "Open-deck harbor cruise in search of dolphins.", "durationMinutes": 90, "minParticipants": 6, "maxParticipants": 24, "guideRatio": 24, "resource": "boat", "meetingPoint": 1, "policy": 0, "waiver": true, "certs": ["Water Safety"], "startTimes": ["09:30", "12:00", "15:00"], "rrule": "FREQ=DAILY",
+      "tickets": [{ "name": "Adult", "priceCents": 4800 }, { "name": "Child 3-12", "priceCents": 2900, "minAge": 3, "maxAge": 12 }], "addOns": [] },
+    { "name": "Plantation Day Trip by Van", "slug": "plantation-day-trip", "kind": "vehicle_day_trip", "description": "Two historic plantations and a lowcountry lunch.", "durationMinutes": 420, "minParticipants": 4, "maxParticipants": 14, "guideRatio": 14, "resource": "van", "meetingPoint": 0, "policy": 1, "waiver": true, "startTimes": ["08:30"], "rrule": "FREQ=WEEKLY;BYDAY=MO,WE,FR,SA",
+      "tickets": [{ "name": "Adult", "priceCents": 11500 }, { "name": "Child 6-12", "priceCents": 7500, "minAge": 6, "maxAge": 12 }], "addOns": [{ "name": "Plantation lunch", "priceCents": 2200, "perPerson": true }] },
+    { "name": "Private Ghost Tour", "slug": "private-ghost-tour", "kind": "private_only", "description": "A lantern-lit walk for your own group.", "durationMinutes": 120, "minParticipants": 1, "maxParticipants": 10, "guideRatio": 10, "resource": "none", "meetingPoint": 2, "policy": 1, "waiver": false, "startTimes": ["20:00"], "rrule": "FREQ=WEEKLY;BYDAY=FR,SA",
+      "tickets": [{ "name": "Private group (up to 10)", "priceCents": 38000, "seatsUsed": 10 }], "addOns": [] }
+  ],
+  "guestNames": ["Avery Collins", "Jordan Pierce", "Riley Morgan", "Casey Bennett", "Taylor Reed", "Morgan Hayes", "Quinn Foster", "Parker Ellis", "Skyler Grant", "Rowan Price", "Emerson Wells", "Harper Cole", "Finley Marsh", "Dakota Shaw", "Sage Lawson", "Reese Boyd", "Jamie Stone", "Drew Nolan", "Blake Hart", "Cameron Doyle"],
+  "bookingTarget": 60
+}

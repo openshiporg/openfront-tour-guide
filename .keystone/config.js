@@ -2150,7 +2150,9 @@ async function issueRefund(prisma, a) {
   if (reservation.replay && reservation.refund.status === "succeeded") return reservation.refund;
   const { refund, payment } = reservation;
   let outcome = { status: "succeeded", id: "" };
-  if (refund) {
+  const operatorTender = !!payment && (payment.paymentMethod === "cash" || !payment.providerPaymentId);
+  if (refund && operatorTender) outcome = { status: "succeeded", id: `manual:${refund.id}` };
+  else if (refund) {
     try {
       const prov = payment.paymentProvider || await provider(prisma);
       const result = await refundPayment({ provider: prov, paymentId: payment.providerPaymentId, amount: refund.amount, currency: refund.currencyCode, idempotencyKey: refund.idempotencyKey });
@@ -2226,10 +2228,12 @@ async function refundBooking(_r, args, context) {
 }
 async function cancelDeparture(_r, args, context) {
   const user = await authorize(context, "canManageDepartures");
-  const i = args.input;
+  return cancelDepartureCore(context.prisma, user.id, args.input, args.idempotencyKey);
+}
+async function cancelDepartureCore(prisma, actorId, i, requestKey) {
   if (!["weather", "operator", "min_not_met"].includes(i.reason)) throw new Error("Reason must be weather, operator or min_not_met");
   const status = i.reason === "weather" ? "weather_cancelled" : "cancelled";
-  const ids = await context.prisma.$transaction(async (tx) => {
+  const ids = await prisma.$transaction(async (tx) => {
     await lockTransactionKey(tx, `departure:${i.departureId}`);
     const d = await tx.departure.findUnique({ where: { id: i.departureId } });
     if (!d) throw new Error("Departure not found");
@@ -2241,22 +2245,22 @@ async function cancelDeparture(_r, args, context) {
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h) => h.id) }, status: "reserved" }, data: { status: "released" } });
       await tx.booking.updateMany({ where: { departureId: d.id, status: "pending_payment" }, data: { status: "cancelled" } });
       await tx.guideAssignment.updateMany({ where: { departureId: d.id, status: { in: ["offered", "accepted"] } }, data: { status: "cancelled" } });
-      await audit(tx, user.id, "departure.cancelled", "Departure", d.id, { status: d.status }, { status }, i.reason, args.idempotencyKey);
+      await audit(tx, actorId, "departure.cancelled", "Departure", d.id, { status: d.status }, { status }, i.reason, requestKey);
     }
     return (await tx.booking.findMany({ where: { departureId: d.id, status: { in: ["confirmed", "checked_in", "partially_refunded"] } }, select: { id: true } })).map((b) => b.id);
   }, { timeout: 2e4 });
   const credits = [];
   for (const id of ids) {
-    const b = await context.prisma.booking.findUnique({ where: { id } });
+    const b = await prisma.booking.findUnique({ where: { id } });
     if (i.offerCredit && b.channelId == null) {
       const token = derivedToken("rebook", b.id);
-      await context.prisma.booking.update({ where: { id }, data: { status: "cancelled", seats: 0, rebookCreditHash: hashToken(token) } });
-      await context.prisma.$transaction(async (tx) => {
-        await audit(tx, user.id, "booking.credit_offered", "Booking", id, null, { creditCents: b.totalCents - b.refundedCents }, i.reason);
+      await prisma.booking.update({ where: { id }, data: { status: "cancelled", seats: 0, rebookCreditHash: hashToken(token) } });
+      await prisma.$transaction(async (tx) => {
+        await audit(tx, actorId, "booking.credit_offered", "Booking", id, null, { creditCents: b.totalCents - b.refundedCents }, i.reason);
       });
       credits.push({ bookingRef: b.bookingRef, token });
     } else {
-      await issueRefund(context.prisma, { bookingId: id, amount: b.totalCents - b.refundedCents, reason: `Departure ${i.reason} cancellation`, key: `depcancel:${i.departureId}:${id}`, actorId: user.id, cancel: true });
+      await issueRefund(prisma, { bookingId: id, amount: b.totalCents - b.refundedCents, reason: `Departure ${i.reason} cancellation`, key: `depcancel:${i.departureId}:${id}`, actorId, cancel: true });
     }
   }
   return { cancelledBookings: ids.length, credits };
@@ -2298,7 +2302,7 @@ async function createChannelBooking(_r, args, context) {
     const participants = buildParticipants(quote, i.participants);
     const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: i.source, channel, holdId: hold.holdId, status: "pending_payment" });
     const confirmed = await confirmBooking(tx, booking.id, user.id, args.idempotencyKey);
-    if (quote.totalCents > 0 && i.source !== "reseller") {
+    if (quote.totalCents > 0 && !(channel && channel.paymentModel === "channel_collects")) {
       await tx.payment.create({ data: { idempotencyKey: `tour-payment:${booking.id}`, amount: quote.totalCents, currencyCode: quote.currencyCode, status: "succeeded", paymentMethod: i.paymentMethod === "cash" ? "cash" : "credit_card", orderId: booking.id, processedAt: /* @__PURE__ */ new Date(), processedById: user.id, notes: "Collected by operator" } });
     }
     return { bookingRef: confirmed.bookingRef, waivers: [] };
@@ -2386,6 +2390,36 @@ function peakConcurrentResourceUnits(allocations, options = {}) {
   return peak;
 }
 
+// features/keystone/lib/tour-schedule.ts
+function zonedStart(date, time, timeZone) {
+  let at = /* @__PURE__ */ new Date(`${date}T${time}:00Z`);
+  const target = at.getTime();
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(at);
+    const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+    const represented = (/* @__PURE__ */ new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`)).getTime();
+    at = new Date(at.getTime() + target - represented);
+  }
+  return at;
+}
+function expandSchedule(schedule, tour, from, to) {
+  const out = [];
+  const weekdays = /BYDAY=([^;]+)/.exec(schedule.rrule || "")?.[1]?.split(",");
+  for (let day = /* @__PURE__ */ new Date(from.toISOString().slice(0, 10) + "T12:00:00Z"); day <= to; day = new Date(day.getTime() + 864e5)) {
+    if (schedule.validFrom && day < schedule.validFrom || schedule.validTo && day > schedule.validTo) continue;
+    if (weekdays && !weekdays.includes(["SU", "MO", "TU", "WE", "TH", "FR", "SA"][day.getUTCDay()])) continue;
+    for (const time of schedule.startTimes || ["09:00"]) {
+      if (!/^\d\d:\d\d$/.test(time)) throw new Error("Invalid schedule time");
+      const startAt = zonedStart(day.toISOString().slice(0, 10), time, tour.timezone || "America/New_York");
+      if (startAt >= from && startAt <= to) out.push(startAt);
+    }
+  }
+  return out;
+}
+function departureData(schedule, tour, startAt, departureKey) {
+  return { departureKey, tourId: tour.id, scheduleId: schedule.id, startAt, endAt: new Date(startAt.getTime() + (tour.durationDays ? tour.durationDays * 1440 : tour.durationMinutes) * 6e4), capacity: Math.min(schedule.capacityOverride || tour.maxParticipants, tour.maxParticipants), status: "on_sale" };
+}
+
 // features/keystone/mutations/tour-operations.ts
 async function generateDepartures(_r, args, context) {
   await authorize(context, "canManageDepartures");
@@ -2395,28 +2429,11 @@ async function generateDepartures(_r, args, context) {
     const now = /* @__PURE__ */ new Date(), horizon = new Date(now.getTime() + Math.min(60, args.input?.days || 60) * 864e5);
     for (const schedule of schedules) {
       if (schedule.tour.status !== "active") continue;
-      for (let day = /* @__PURE__ */ new Date(now.toISOString().slice(0, 10) + "T12:00:00Z"); day <= horizon; day = new Date(day.getTime() + 864e5)) {
-        const date = day.toISOString().slice(0, 10);
-        if (schedule.validFrom && day < schedule.validFrom || schedule.validTo && day > schedule.validTo) continue;
-        const weekdays = /BYDAY=([^;]+)/.exec(schedule.rrule)?.[1]?.split(",");
-        if (weekdays && !weekdays.includes(["SU", "MO", "TU", "WE", "TH", "FR", "SA"][day.getUTCDay()])) continue;
-        for (const time of schedule.startTimes || ["09:00"]) {
-          if (!/^\d\d:\d\d$/.test(time)) throw new Error("Invalid schedule time");
-          let startAt = /* @__PURE__ */ new Date(`${date}T${time}:00Z`);
-          const target = startAt.getTime();
-          for (let i = 0; i < 3; i++) {
-            const parts = new Intl.DateTimeFormat("en-CA", { timeZone: schedule.tour.timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(startAt);
-            const p = Object.fromEntries(parts.map((p2) => [p2.type, p2.value]));
-            const represented = (/* @__PURE__ */ new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`)).getTime();
-            startAt = new Date(startAt.getTime() + target - represented);
-          }
-          if (startAt <= now || startAt > horizon) continue;
-          const departureKey = `${schedule.tourId}:${startAt.toISOString()}`;
-          const existing = await tx.departure.findUnique({ where: { departureKey } });
-          if (existing) continue;
-          const d = await tx.departure.create({ data: { departureKey, tourId: schedule.tourId, scheduleId: schedule.id, startAt, endAt: new Date(startAt.getTime() + (schedule.tour.durationDays ? schedule.tour.durationDays * 1440 : schedule.tour.durationMinutes) * 6e4), capacity: Math.min(schedule.capacityOverride || schedule.tour.maxParticipants, schedule.tour.maxParticipants), status: "on_sale" } });
-          created.push(d.id);
-        }
+      for (const startAt of expandSchedule(schedule, schedule.tour, now, horizon)) {
+        const departureKey = `${schedule.tourId}:${startAt.toISOString()}`;
+        if (await tx.departure.findUnique({ where: { departureKey } })) continue;
+        const d = await tx.departure.create({ data: departureData(schedule, schedule.tour, startAt, departureKey) });
+        created.push(d.id);
       }
     }
     await audit(tx, context.session.itemId, "departures.generated", "Schedule", args.input?.tourId || "all", null, { count: created.length });
@@ -2533,7 +2550,11 @@ async function closeDeparture(_r, args, context) {
     const d = await tx.departure.findUnique({ where: { id: i.departureId }, include: { assignedGuides: true } });
     if (!d || !["closed", "in_progress"].includes(d.status) || d.endAt > /* @__PURE__ */ new Date()) throw new Error("Only an ended closed/in-progress departure can complete");
     await tx.departure.update({ where: { id: d.id }, data: { status: "completed" } });
-    await tx.booking.updateMany({ where: { departureId: d.id, status: "checked_in" }, data: { status: "completed" } });
+    const toComplete = await tx.booking.findMany({ where: { departureId: d.id, status: "checked_in" }, include: { channel: true, payments: { where: { status: { in: ["succeeded", "partially_refunded", "refunded"] } } } } });
+    for (const b of toComplete) {
+      const paid = b.payments.reduce((n, p) => n + p.amount - (p.refundedAmount || 0), 0);
+      if (b.channel?.paymentModel === "channel_collects" || paid >= b.totalCents - b.refundedCents) await tx.booking.update({ where: { id: b.id }, data: { status: "completed" } });
+    }
     for (const a of d.assignedGuides.filter((a2) => a2.status === "accepted")) {
       const payout = await tx.guidePayout.create({ data: { guideId: a.guideId, periodStart: d.startAt, periodEnd: d.endAt, totalCents: a.payCents, status: "draft" } });
       await tx.guideAssignment.update({ where: { id: a.id }, data: { status: "worked", payoutId: payout.id } });
@@ -2560,6 +2581,273 @@ async function generateChannelStatement(_r, args, context) {
   });
 }
 
+// features/keystone/mutations/tour-onboarding.ts
+var ENTITIES = ["settings", "paymentProvider", "role", "meetingPoint", "cancellationPolicy", "waiver", "promoCode", "channel", "resource", "guide", "tour"];
+async function ensureTourOnboardingRecord(_r, { entity, data }, context) {
+  await authorize(context, "canManageOnboarding");
+  if (!ENTITIES.includes(entity) || !data || typeof data !== "object") throw new Error("Unsupported setup record");
+  const p = context.prisma;
+  const ensure = async (model, where, create) => await p[model].findFirst({ where }) || p[model].create({ data: create });
+  switch (entity) {
+    case "settings": {
+      const row = await ensure("storeSettings", { settingsKey: "operator" }, { ...data, settingsKey: "operator" });
+      return { id: row.id };
+    }
+    case "paymentProvider": {
+      const row = await ensure("paymentProvider", { code: data.code }, { name: data.name, code: data.code, isInstalled: true, credentials: {}, createPaymentFunction: "stripe", capturePaymentFunction: "stripe", refundPaymentFunction: "stripe", getPaymentStatusFunction: "stripe", generatePaymentLinkFunction: "stripe", handleWebhookFunction: "stripe" });
+      return { id: row.id };
+    }
+    case "role": {
+      for (const key of data.permissions) if (!permissionNames.includes(key)) throw new Error("Unknown permission");
+      const row = await ensure("role", { name: data.name }, { name: data.name, ...Object.fromEntries(data.permissions.map((k) => [k, true])) });
+      return { id: row.id };
+    }
+    case "meetingPoint": {
+      const row = await ensure("meetingPoint", { name: data.name }, data);
+      return { id: row.id };
+    }
+    case "cancellationPolicy": {
+      const row = await ensure("cancellationPolicy", { name: data.name }, data);
+      return { id: row.id };
+    }
+    case "waiver": {
+      const body = [{ type: "paragraph", children: [{ text: data.text }] }];
+      const row = await ensure("waiverTemplate", { name: data.name, version: data.version }, { name: data.name, version: data.version, body, bodyHash: hashToken(JSON.stringify(body)), status: "published" });
+      return { id: row.id };
+    }
+    case "promoCode": {
+      const row = await ensure("promoCode", { code: data.code }, { ...data, status: "active" });
+      return { id: row.id };
+    }
+    case "channel": {
+      const row = await ensure("channel", { name: data.name }, data);
+      return { id: row.id };
+    }
+    case "resource": {
+      const row = await ensure("resource", { name: data.name }, { ...data, status: "active" });
+      return { id: row.id };
+    }
+    case "guide": {
+      let row = await p.guide.findFirst({ where: { name: data.name } });
+      if (!row) {
+        row = await p.guide.create({ data: { name: data.name, languages: data.languages, payRateType: data.payRateType, payRateCents: data.payRateCents, status: "active", bio: data.bio || "" } });
+        for (const cert of data.certs) await p.guideCertification.create({ data: { guideId: row.id, name: cert, expiresAt: data.expiringCert === cert ? new Date(Date.now() + 20 * 864e5) : new Date(Date.now() + 700 * 864e5) } });
+      }
+      return { id: row.id };
+    }
+    case "tour": {
+      let tour = await p.tour.findUnique({ where: { slug: data.slug } });
+      if (!tour) {
+        tour = await p.tour.create({ data: {
+          name: data.name,
+          slug: data.slug,
+          kind: data.kind,
+          description: data.description,
+          durationMinutes: data.durationMinutes,
+          minParticipants: data.minParticipants,
+          maxParticipants: data.maxParticipants,
+          guideRatio: data.guideRatio,
+          requiresResourceKind: data.resource,
+          minAge: data.minAge || 0,
+          status: "active",
+          timezone: "America/New_York",
+          requiredCertifications: data.certs || [],
+          meetingPointId: data.meetingPointId,
+          cancellationPolicyId: data.policyId,
+          requiresWaiverId: data.waiverId || void 0,
+          highlights: [],
+          ticketTypes: { create: data.tickets.map((t) => ({ name: t.name, priceCents: t.priceCents, seatsUsed: t.seatsUsed || 1, minAge: t.minAge, maxAge: t.maxAge })) },
+          addOns: { create: (data.addOns || []).map((a) => ({ name: a.name, priceCents: a.priceCents, perPerson: a.perPerson })) }
+        } });
+        await p.schedule.create({ data: { name: `${data.name} schedule`, tourId: tour.id, rrule: data.rrule, startTimes: data.startTimes } });
+      }
+      return { id: tour.id };
+    }
+  }
+}
+var rand = (seed) => {
+  let s = seed;
+  return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
+};
+async function seedTourActivity(_r, { template, seed }, context) {
+  const user = await authorize(context, "canManageOnboarding");
+  const p = context.prisma;
+  const full = template === "full";
+  const tours = await p.tour.findMany({ where: { status: "active" }, include: { schedules: true, ticketTypes: true } });
+  const wanted = full ? tours : tours.filter((t) => seed.tours.find((x) => x.slug === t.slug)?.minimal);
+  const now = /* @__PURE__ */ new Date();
+  const horizon = new Date(now.getTime() + (full ? 21 : 3) * 864e5);
+  let created = 0;
+  for (const tour of wanted) for (const schedule of tour.schedules) {
+    const starts = expandSchedule(schedule, tour, now, horizon).slice(0, full ? 400 : 3);
+    for (const startAt of starts) {
+      const key = `${tour.id}:${startAt.toISOString()}`;
+      if (!await p.departure.findUnique({ where: { departureKey: key } })) {
+        await p.departure.create({ data: departureData(schedule, tour, startAt, key) });
+        created++;
+      }
+    }
+  }
+  const departures = await p.departure.findMany({ where: { startAt: { gt: now }, status: { in: ["on_sale", "confirmed", "min_not_met", "full"] } }, include: { tour: true }, orderBy: { startAt: "asc" }, take: 400 });
+  if (!full) return { departures: created, bookings: 0 };
+  const guides = await p.guide.findMany({ orderBy: { name: "asc" } });
+  const resources = await p.resource.findMany();
+  let gi = 0;
+  const idem = (s) => `seed:${s}`;
+  for (const d of departures.slice(0, 60)) {
+    try {
+      const kind = d.tour.requiresResourceKind;
+      const r = resources.find((x) => x.kind === kind);
+      if (r) await assignResource(null, { input: { departureId: d.id, resourceId: r.id, quantity: kind === "kayak" ? 8 : 1 }, idempotencyKey: idem(`res:${d.id}`) }, context);
+    } catch {
+    }
+    for (let k = 0; k < 2; k++) {
+      const guide = guides[gi++ % guides.length];
+      try {
+        const offer = await assignGuide(null, { input: { departureId: d.id, guideId: guide.id, role: k === 0 ? "lead" : "assistant" }, idempotencyKey: idem(`guide:${d.id}:${guide.id}`) }, context);
+        if (k === 0 || d.startAt.getTime() % 3 === 0) await respondToAssignment(null, { input: { assignmentId: offer.id, status: "accepted" }, idempotencyKey: idem(`accept:${offer.id}`) }, { ...context, session: { ...context.session, itemId: user.id } });
+      } catch {
+      }
+    }
+  }
+  const next = rand(7);
+  let bookings = 0;
+  const sources = ["phone", "walk_up", "reseller", "phone", "walk_up"];
+  const channels = await p.channel.findMany();
+  const names = seed.guestNames;
+  const sellable = departures.filter((d) => d.tour.slug !== "private-ghost-tour" || next() > 0.5);
+  for (let n = 0; bookings < (seed.bookingTarget || 60) && n < 400; n++) {
+    const d = sellable[Math.floor(next() * Math.min(sellable.length, 90))];
+    if (!d) break;
+    const tickets = await p.ticketType.findMany({ where: { tourId: d.tourId } });
+    const t = tickets[Math.floor(next() * tickets.length)];
+    const qty = 1 + Math.floor(next() * 3);
+    const name3 = names[Math.floor(next() * names.length)];
+    const source = sources[Math.floor(next() * sources.length)];
+    const channel = source === "reseller" ? channels[Math.floor(next() * channels.length)] : null;
+    try {
+      await createChannelBooking(null, { idempotencyKey: idem(`booking:${n}`), input: { departureId: d.id, source, channelId: channel?.id, paymentMethod: "cash", tickets: [{ id: t.id, qty }], lead: { name: name3, email: `${name3.toLowerCase().replace(/[^a-z]+/g, ".")}@guests.example`, phone: "843-555-0100" }, participants: Array.from({ length: qty }, (_, i) => ({ ticketTypeId: t.id, fullName: i === 0 ? name3 : `${name3.split(" ")[0]} Guest ${i}`, age: t.minAge ? Math.max(t.minAge, 30) : 35 })) } }, context);
+      bookings++;
+    } catch {
+    }
+  }
+  const soon = await p.participant.findMany({ where: { booking: { status: "confirmed", departure: { startAt: { lt: new Date(now.getTime() + 36 * 36e5) } } } }, take: 6 });
+  for (const part of soon) {
+    try {
+      await checkInParticipant(null, { input: { participantId: part.id }, idempotencyKey: idem(`ci:${part.id}`) }, context);
+    } catch {
+    }
+  }
+  const target = departures.find((d) => d.tour.slug === "dolphin-boat" && d.startAt.getTime() - now.getTime() > 5 * 864e5);
+  if (target) {
+    for (let i = 0; i < 3; i++) {
+      const t = (await p.ticketType.findMany({ where: { tourId: target.tourId } }))[0];
+      try {
+        await createChannelBooking(null, { idempotencyKey: idem(`weather:${i}`), input: { departureId: target.id, source: "phone", paymentMethod: "cash", tickets: [{ id: t.id, qty: 2 }], lead: { name: names[i], email: `weather${i}@guests.example` }, participants: [0, 1].map((k) => ({ ticketTypeId: t.id, fullName: `${names[i]} ${k}`, age: 30 })) } }, context);
+      } catch {
+      }
+    }
+    await cancelDepartureCore(p, user.id, { departureId: target.id, reason: "weather" }, idem("weather-cancel"));
+  }
+  const history = tours.slice(0, 4);
+  for (let h = 0; h < history.length; h++) {
+    const tour = history[h];
+    const startAt = new Date(now.getTime() - (h + 2) * 864e5);
+    startAt.setMinutes(0, 0, 0);
+    const key = `history:${tour.id}:${startAt.toISOString()}`;
+    if (await p.departure.findUnique({ where: { departureKey: key } })) continue;
+    const dep = await p.departure.create({ data: { departureKey: key, tourId: tour.id, startAt, endAt: new Date(startAt.getTime() + tour.durationMinutes * 6e4), capacity: tour.maxParticipants, status: "completed" } });
+    const guide = guides[h % guides.length];
+    const payout = await p.guidePayout.create({ data: { guideId: guide.id, periodStart: dep.startAt, periodEnd: dep.endAt, totalCents: guide.payRateCents, status: "draft" } });
+    await p.guideAssignment.create({ data: { departureId: dep.id, guideId: guide.id, role: "lead", status: "worked", payCents: guide.payRateCents, payoutId: payout.id } });
+    const ticket = tour.ticketTypes[0];
+    for (let b = 0; b < 2; b++) {
+      const total = ticket.priceCents * 2;
+      const booking = await p.booking.create({ data: { bookingRef: `TG-${humanCode(8)}`, departureId: dep.id, guestName: names[(h * 2 + b) % names.length], guestEmail: `past${h}${b}@guests.example`, status: "completed", source: "phone", subtotalCents: total, totalCents: total, seats: 2 * ticket.seatsUsed, policySnapshot: { rules: [] }, tourSnapshot: { name: tour.name, timezone: tour.timezone }, lines: { create: [{ name: ticket.name, unitPriceCents: ticket.priceCents, qty: 2, seatsUsed: ticket.seatsUsed, kind: "ticket", totalCents: total, catalogId: ticket.id }] } } });
+      for (let k = 0; k < 2; k++) await p.participant.create({ data: { bookingId: booking.id, fullName: `${booking.guestName} ${k}`, waiverStatus: "not_required", checkInStatus: "checked_in", ticketTypeSnapshot: { name: ticket.name } } });
+      await p.payment.create({ data: { idempotencyKey: `seed-history:${booking.id}`, amount: total, status: "succeeded", paymentMethod: "cash", orderId: booking.id, processedAt: startAt, notes: "Collected by operator" } });
+    }
+  }
+  await p.$transaction((tx) => audit(tx, user.id, "onboarding.activity_seeded", "Departure", "seed", null, { bookings }));
+  return { departures: created, bookings };
+}
+
+// features/keystone/mutations/tour-manifest.ts
+var LIVE2 = ["confirmed", "checked_in", "completed", "no_show", "partially_refunded"];
+async function departuresInRange(_r, args, context) {
+  await authorize(context, "canCheckIn");
+  const from = new Date(args.from), to = new Date(args.to);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from || to.getTime() - from.getTime() > 31 * 864e5) throw new Error("Choose a range of at most 31 days");
+  const rows = await context.prisma.departure.findMany({
+    where: { startAt: { gte: from, lt: to } },
+    orderBy: { startAt: "asc" },
+    take: 300,
+    include: { tour: { select: { id: true, name: true, guideRatio: true, minParticipants: true, requiresWaiverId: true } }, assignedGuides: { include: { guide: { select: { id: true, name: true } } } }, resourceAssignments: { include: { resource: { select: { name: true } } } } }
+  });
+  const out = [];
+  for (const d of rows) {
+    const [booked, held, gaps] = await Promise.all([
+      context.prisma.booking.aggregate({ where: { departureId: d.id, status: { in: LIVE2 } }, _sum: { seats: true }, _count: true }),
+      context.prisma.inventoryHold.aggregate({ where: { departureId: d.id, status: "active", expiresAt: { gt: /* @__PURE__ */ new Date() } }, _sum: { quantity: true } }),
+      context.prisma.participant.count({ where: { waiverStatus: "required", booking: { departureId: d.id, status: { in: LIVE2 } } } })
+    ]);
+    const seats = booked._sum.seats || 0;
+    const accepted = d.assignedGuides.filter((a) => ["accepted", "worked"].includes(a.status));
+    out.push({
+      id: d.id,
+      startAt: d.startAt,
+      endAt: d.endAt,
+      status: d.status,
+      capacity: d.capacity,
+      tourId: d.tour.id,
+      tourName: d.tour.name,
+      minParticipants: d.tour.minParticipants,
+      booked: seats,
+      held: held._sum.quantity || 0,
+      bookings: booked._count,
+      waiverGaps: gaps,
+      guidesNeeded: Math.ceil(seats / d.tour.guideRatio),
+      guidesAssigned: accepted.length,
+      staffed: accepted.length >= Math.ceil(seats / d.tour.guideRatio),
+      guides: d.assignedGuides.map((a) => ({ id: a.id, name: a.guide?.name, role: a.role, status: a.status })),
+      resources: d.resourceAssignments.map((r) => `${r.resource?.name} x${r.quantity}`)
+    });
+  }
+  return out;
+}
+async function departureManifest(_r, args, context) {
+  const user = await authorize(context, "canCheckIn");
+  const canMedical = !!user.role?.canReadMedicalNotes;
+  const d = await context.prisma.departure.findUnique({ where: { id: args.departureId }, include: { tour: { include: { meetingPoint: true } } } });
+  if (!d) throw new Error("Departure not found");
+  const bookings = await context.prisma.booking.findMany({ where: { departureId: d.id, status: { in: LIVE2 } }, orderBy: { bookingRef: "asc" }, include: { participants: true } });
+  if (canMedical && bookings.some((b) => b.participants.some((p) => p.medicalNotes))) {
+    await context.prisma.$transaction((tx) => audit(tx, user.id, "medical_notes.read", "Departure", d.id, null, null, "Manifest viewed"));
+  }
+  return {
+    departure: { id: d.id, startAt: d.startAt, endAt: d.endAt, status: d.status, tourName: d.tour.name, meetingPoint: d.tour.meetingPoint?.name || null },
+    bookings: bookings.map((b) => ({
+      id: b.id,
+      bookingRef: b.bookingRef,
+      status: b.status,
+      leadName: b.guestName,
+      leadPhone: b.guestPhone,
+      pickupLocation: b.pickupLocation,
+      specialRequests: b.specialRequests,
+      participants: b.participants.map((p) => ({ id: p.id, fullName: p.fullName, age: p.age, dietary: p.dietary, medicalFlag: !!p.medicalNotes, medicalNotes: canMedical ? p.medicalNotes : null, waiverStatus: p.waiverStatus, checkInStatus: p.checkInStatus }))
+    }))
+  };
+}
+
+// features/keystone/mutations/updateActiveUser.ts
+async function updateActiveUser(_root, { data }, context) {
+  if (!isSignedIn({ session: context.session })) throw new Error("Not authenticated");
+  const allowed = /* @__PURE__ */ new Set(["name", "onboardingStatus"]);
+  if (Object.keys(data || {}).some((key) => !allowed.has(key))) throw new Error("Unsupported profile field");
+  if (data.onboardingStatus && !["not_started", "in_progress", "completed", "dismissed"].includes(data.onboardingStatus)) throw new Error("Invalid onboarding status");
+  return context.db.User.updateOne({ where: { id: context.session.itemId }, data });
+}
+
 // features/keystone/mutations/index.ts
 var graphql2 = String.raw;
 function extendGraphqlSchema(baseSchema) {
@@ -2567,6 +2855,7 @@ function extendGraphqlSchema(baseSchema) {
     schemas: [baseSchema],
     typeDefs: graphql2`
       scalar JSON
+      input UserUpdateProfileInput { onboardingStatus: String, name: String }
       input TourTicketChoice { id: ID!, qty: Int! }
       input DepartureHoldInput { departureId: ID!, tickets: [TourTicketChoice!]!, addOns: [TourTicketChoice!], promoCode: String, token: String! }
       input BookingParticipantInput { ticketTypeId: ID!, fullName: String!, age: Int, email: String, dietary: String, medicalNotes: String }
@@ -2589,6 +2878,10 @@ function extendGraphqlSchema(baseSchema) {
       input ChannelStatementInput { channelId: ID!, from: String!, to: String! }
       type Query {
         redirectToInit: Boolean
+        tourTotal: Int
+        operatorName: String
+        departuresInRange(from: String!, to: String!): JSON
+        departureManifest(departureId: ID!): JSON
         toursOnSale: JSON
         tourAvailability(tourId: ID!, from: String!, to: String!): JSON
         lookupBooking(bookingRef: String!, email: String!): JSON
@@ -2615,10 +2908,13 @@ function extendGraphqlSchema(baseSchema) {
         approveRefund(approvalId: ID!): JSON
         generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
         sweepDepartures(idempotencyKey: String!): JSON
+        ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
+        seedTourActivity(template: String!, seed: JSON!): JSON
+        updateActiveUser(data: UserUpdateProfileInput!): User
       }
     `,
     resolvers: {
-      Query: { redirectToInit: redirectToInit_default, toursOnSale, tourAvailability, lookupBooking },
+      Query: { redirectToInit: redirectToInit_default, departuresInRange, departureManifest, operatorName: async (_r, _a, c) => c.session?.itemId ? (await c.sudo().query.StoreSettings.findMany({ take: 1, query: "name" }))[0]?.name || null : null, tourTotal: async (_r, _a, c) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold,
         startBookingCheckout,
@@ -2640,7 +2936,10 @@ function extendGraphqlSchema(baseSchema) {
         requestRefundApproval,
         approveRefund,
         generateChannelStatement,
-        sweepDepartures
+        sweepDepartures,
+        ensureTourOnboardingRecord,
+        seedTourActivity,
+        updateActiveUser
       }
     }
   });

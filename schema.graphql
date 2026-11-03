@@ -5151,6 +5151,9 @@ type Mutation {
   approveRefund(approvalId: ID!): JSON
   generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
   sweepDepartures(idempotencyKey: String!): JSON
+  ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
+  seedTourActivity(template: String!, seed: JSON!): JSON
+  updateActiveUser(data: UserUpdateProfileInput!): User
 }
 
 union UserAuthenticationWithPasswordResult = UserAuthenticationWithPasswordSuccess | UserAuthenticationWithPasswordFailure
@@ -5309,6 +5312,10 @@ type Query {
   authenticatedItem: AuthenticatedItem
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
   redirectToInit: Boolean
+  tourTotal: Int
+  operatorName: String
+  departuresInRange(from: String!, to: String!): JSON
+  departureManifest(departureId: ID!): JSON
   toursOnSale: JSON
   tourAvailability(tourId: ID!, from: String!, to: String!): JSON
   lookupBooking(bookingRef: String!, email: String!): JSON
@@ -5450,6 +5457,11 @@ type KeystoneAdminUISort {
 enum KeystoneAdminUISortDirection {
   ASC
   DESC
+}
+
+input UserUpdateProfileInput {
+  onboardingStatus: String
+  name: String
 }
 
 input TourTicketChoice {

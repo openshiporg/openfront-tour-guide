@@ -39,23 +39,33 @@ import { AdminMeta } from '../hooks/useAdminMeta'
 import { Home, Database, ChevronRight, Package } from 'lucide-react'
 import { Logo, LogoIcon } from '@/features/dashboard/components/Logo'
 import { UserProfileClient } from './UserProfileClient'
-import { visibleSidebarLists } from '../lib/sidebarAccess'
+import { useDashboard } from '../context/DashboardProvider'
+import { visiblePlatformItems, visibleSidebarLists } from '../lib/sidebarAccess'
+import { OnboardingCards } from '@/features/platform/onboarding/components/OnboardingCards'
+import { dismissOnboarding } from '@/features/platform/onboarding/actions/onboarding'
+import { platformNavGroups, platformStandaloneItems, getPlatformNavItemsWithBasePath } from '@/features/platform/lib/navigation'
 
 interface User {
   id: string;
+  operatorName?: string | null | undefined;
+  onboardingStatus?: string;
+  menuItemsCount?: number | null;
   email: string;
   name?: string;
   role?: {
     canAccessDashboard?: boolean;
+    canManageOnboarding?: boolean;
   };
 }
 
 interface SidebarProps {
   adminMeta: AdminMeta | null
   user?: User | null
+  onOpenDialog?: () => void
 }
 
-export function Sidebar({ adminMeta, user }: SidebarProps) {
+export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
+  const { basePath } = useDashboard()
   const { isMobile, setOpenMobile } = useSidebar()
   const pathname = usePathname()
 
@@ -88,8 +98,18 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
     href: `/dashboard/${list.path}`
   }))
 
+  const platformWithBase = visiblePlatformItems(getPlatformNavItemsWithBasePath(basePath), listsArray as any[], user)
+  const platformGroups = platformNavGroups.map((group) => ({
+    title: group.title,
+    items: platformWithBase.filter((item) => item.group === group.id).map((item) => ({ title: item.title, href: item.href })),
+    isActive: platformWithBase.filter((item) => item.group === group.id).some((item) => isLinkActive(item.href)),
+    icon: group.icon,
+  })).filter((group) => group.items.length > 0)
+  const standalone = visiblePlatformItems(platformStandaloneItems, listsArray as any[], user).map((item) => ({ ...item, href: `${basePath}${item.href}` }))
+
   // Dashboard items for the collapsible menu
   const dashboardItems = [
+    ...platformGroups,
     {
       title: "Models",
       items: sidebarLinks,
@@ -103,7 +123,7 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
       <SidebarHeader>
         <SidebarMenuButton asChild>
           <div className="group-has-[[data-collapsible=icon]]/sidebar-wrapper:hidden p-2">
-            <Logo />
+            <Logo name={user?.operatorName ?? undefined} />
           </div>
         </SidebarMenuButton>
         <SidebarMenuButton asChild>
@@ -125,6 +145,22 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Platform</SidebarGroupLabel>
+          <SidebarMenu>
+            {standalone.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton asChild isActive={isLinkActive(item.href)}>
+                  <Link href={item.href} onClick={() => setOpenMobile(false)}>
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarGroup>
 
@@ -224,6 +260,16 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
       </SidebarContent>
       
       <SidebarFooter>
+        <div className="mb-2 w-full overflow-visible">
+          <OnboardingCards
+            steps={[{ href: '#onboarding', title: 'Set up your tours', description: 'Create tours, guides, fleet, departures and bookings in one step.' }]}
+            onboardingStatus={user?.onboardingStatus}
+            menuItemsCount={user?.menuItemsCount}
+            userRole={user?.role}
+            onDismiss={async () => { await dismissOnboarding() }}
+            onOpenDialog={onOpenDialog}
+          />
+        </div>
         {user && <UserProfileClient user={user} />}
       </SidebarFooter>
       

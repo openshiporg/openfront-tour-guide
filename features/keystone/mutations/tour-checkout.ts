@@ -21,7 +21,7 @@ export async function refreshDepartureStatus(tx: any, departureId: string) {
   const next = o.booked >= d.capacity ? 'full' : o.booked >= d.tour.minParticipants ? 'confirmed' : d.status === 'min_not_met' ? 'min_not_met' : 'on_sale';
   if (next !== d.status) await tx.departure.update({ where: { id: d.id }, data: { status: next } });
 }
-function buildParticipants(quote: any, input: any[]) {
+export function buildParticipants(quote: any, input: any[]) {
   const tickets = quote.lines.filter((l: any) => l.kind === 'ticket');
   const total = tickets.reduce((n: number, l: any) => n + l.qty, 0);
   if (!Array.isArray(input) || input.length !== total) throw new Error('Provide one participant per ticket');
@@ -36,7 +36,7 @@ function buildParticipants(quote: any, input: any[]) {
     return { fullName: name, age: p.age ?? null, email: String(p.email || '').trim(), dietary: String(p.dietary || ''), medicalNotes: String(p.medicalNotes || ''), snapshot: { ticketTypeId: line.catalogId, name: line.name, unitPriceCents: line.unitPriceCents } };
   });
 }
-async function newBooking(tx: any, a: { quote: any; lead: any; participants: any[]; source: string; channel?: any; holdId: string; customerId?: string | null; status: string }) {
+export async function newBooking(tx: any, a: { quote: any; lead: any; participants: any[]; source: string; channel?: any; holdId: string; customerId?: string | null; status: string }) {
   const q = a.quote;
   const commission = a.channel ? basisPoints(q.totalCents, a.channel.commissionBps) : 0;
   let bookingRef = '';
@@ -55,7 +55,7 @@ async function newBooking(tx: any, a: { quote: any; lead: any; participants: any
   return booking;
 }
 // Converts a held reservation into confirmed seats. Caller holds departure:<id> lock.
-async function confirmBooking(tx: any, bookingId: string, actorId: string | null, requestId: string) {
+export async function confirmBooking(tx: any, bookingId: string, actorId: string | null, requestId: string) {
   const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { hold: true } });
   if (booking.status === 'confirmed') return booking;
   const hold = booking.hold;
@@ -189,7 +189,9 @@ export async function issueRefund(prisma: any, a: { bookingId: string; amount: n
   if (reservation.replay && reservation.refund.status === 'succeeded') return reservation.refund;
   const { refund, payment } = reservation as any;
   let outcome: any = { status: 'succeeded', id: '' };
-  if (refund) {
+  const operatorTender = !!payment && (payment.paymentMethod === 'cash' || !payment.providerPaymentId);
+  if (refund && operatorTender) outcome = { status: 'succeeded', id: `manual:${refund.id}` };
+  else if (refund) {
     try {
       const prov = payment.paymentProvider || await provider(prisma);
       const result = await refundPayment({ provider: prov, paymentId: payment.providerPaymentId, amount: refund.amount, currency: refund.currencyCode, idempotencyKey: refund.idempotencyKey });
@@ -250,10 +252,13 @@ export async function refundBooking(_r: any, args: any, context: any) {
 }
 
 export async function cancelDeparture(_r: any, args: any, context: any) {
-  const user = await authorize(context, 'canManageDepartures'); const i = args.input;
+  const user = await authorize(context, 'canManageDepartures');
+  return cancelDepartureCore(context.prisma, user.id, args.input, args.idempotencyKey);
+}
+export async function cancelDepartureCore(prisma: any, actorId: string, i: any, requestKey: string) {
   if (!['weather', 'operator', 'min_not_met'].includes(i.reason)) throw new Error('Reason must be weather, operator or min_not_met');
   const status = i.reason === 'weather' ? 'weather_cancelled' : 'cancelled';
-  const ids = await context.prisma.$transaction(async (tx: any) => {
+  const ids = await prisma.$transaction(async (tx: any) => {
     await lockTransactionKey(tx, `departure:${i.departureId}`);
     const d = await tx.departure.findUnique({ where: { id: i.departureId } });
     if (!d) throw new Error('Departure not found');
@@ -265,20 +270,20 @@ export async function cancelDeparture(_r: any, args: any, context: any) {
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h: any) => h.id) }, status: 'reserved' }, data: { status: 'released' } });
       await tx.booking.updateMany({ where: { departureId: d.id, status: 'pending_payment' }, data: { status: 'cancelled' } });
       await tx.guideAssignment.updateMany({ where: { departureId: d.id, status: { in: ['offered', 'accepted'] } }, data: { status: 'cancelled' } });
-      await audit(tx, user.id, 'departure.cancelled', 'Departure', d.id, { status: d.status }, { status }, i.reason, args.idempotencyKey);
+      await audit(tx, actorId, 'departure.cancelled', 'Departure', d.id, { status: d.status }, { status }, i.reason, requestKey);
     }
     return (await tx.booking.findMany({ where: { departureId: d.id, status: { in: ['confirmed', 'checked_in', 'partially_refunded'] } }, select: { id: true } })).map((b: any) => b.id);
   }, { timeout: 20000 });
   const credits: { bookingRef: string; token: string }[] = [];
   for (const id of ids) {
-    const b = await context.prisma.booking.findUnique({ where: { id } });
+    const b = await prisma.booking.findUnique({ where: { id } });
     if (i.offerCredit && b.channelId == null) {
       const token = derivedToken('rebook', b.id);
-      await context.prisma.booking.update({ where: { id }, data: { status: 'cancelled', seats: 0, rebookCreditHash: hashToken(token) } });
-      await context.prisma.$transaction(async (tx: any) => { await audit(tx, user.id, 'booking.credit_offered', 'Booking', id, null, { creditCents: b.totalCents - b.refundedCents }, i.reason); });
+      await prisma.booking.update({ where: { id }, data: { status: 'cancelled', seats: 0, rebookCreditHash: hashToken(token) } });
+      await prisma.$transaction(async (tx: any) => { await audit(tx, actorId, 'booking.credit_offered', 'Booking', id, null, { creditCents: b.totalCents - b.refundedCents }, i.reason); });
       credits.push({ bookingRef: b.bookingRef, token });
     } else {
-      await issueRefund(context.prisma, { bookingId: id, amount: b.totalCents - b.refundedCents, reason: `Departure ${i.reason} cancellation`, key: `depcancel:${i.departureId}:${id}`, actorId: user.id, cancel: true });
+      await issueRefund(prisma, { bookingId: id, amount: b.totalCents - b.refundedCents, reason: `Departure ${i.reason} cancellation`, key: `depcancel:${i.departureId}:${id}`, actorId: actorId, cancel: true });
     }
   }
   return { cancelledBookings: ids.length, credits };
@@ -317,7 +322,7 @@ export async function createChannelBooking(_r: any, args: any, context: any) {
     const participants = buildParticipants(quote, i.participants);
     const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: i.source, channel, holdId: hold.holdId, status: 'pending_payment' });
     const confirmed = await confirmBooking(tx, booking.id, user.id, args.idempotencyKey);
-    if (quote.totalCents > 0 && i.source !== 'reseller') {
+    if (quote.totalCents > 0 && !(channel && channel.paymentModel === 'channel_collects')) {
       await tx.payment.create({ data: { idempotencyKey: `tour-payment:${booking.id}`, amount: quote.totalCents, currencyCode: quote.currencyCode, status: 'succeeded', paymentMethod: i.paymentMethod === 'cash' ? 'cash' : 'credit_card', orderId: booking.id, processedAt: new Date(), processedById: user.id, notes: 'Collected by operator' } });
     }
     return { bookingRef: confirmed.bookingRef, waivers: [] };

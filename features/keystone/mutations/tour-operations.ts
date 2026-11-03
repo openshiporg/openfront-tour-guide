@@ -1,6 +1,7 @@
 import { authorize, command, audit, departureOccupancy } from '../lib/tour-command';
 import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
-import { minimumDecision, settlement } from '../lib/tour-money';
+import { expandSchedule, departureData } from '../lib/tour-schedule';
+import { settlement } from '../lib/tour-money';
 
 export async function generateDepartures(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures');
@@ -10,29 +11,11 @@ export async function generateDepartures(_r: any, args: any, context: any) {
     const now = new Date(), horizon = new Date(now.getTime() + Math.min(60, args.input?.days || 60) * 86400000);
     for (const schedule of schedules) {
       if (schedule.tour.status !== 'active') continue;
-      for (let day = new Date(now.toISOString().slice(0,10) + 'T12:00:00Z'); day <= horizon; day = new Date(day.getTime() + 86400000)) {
-        const date = day.toISOString().slice(0,10);
-        if (schedule.validFrom && day < schedule.validFrom || schedule.validTo && day > schedule.validTo) continue;
-        const weekdays = /BYDAY=([^;]+)/.exec(schedule.rrule)?.[1]?.split(',');
-        if (weekdays && !weekdays.includes(['SU','MO','TU','WE','TH','FR','SA'][day.getUTCDay()])) continue;
-        for (const time of schedule.startTimes as string[] || ['09:00']) {
-          if (!/^\d\d:\d\d$/.test(time)) throw new Error('Invalid schedule time');
-          let startAt = new Date(`${date}T${time}:00Z`);
-          // Iteratively map operator-local wall clock into the tour's IANA timezone (DST aware).
-          const target = startAt.getTime();
-          for (let i = 0; i < 3; i++) {
-            const parts = new Intl.DateTimeFormat('en-CA', { timeZone: schedule.tour.timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(startAt);
-            const p = Object.fromEntries(parts.map(p => [p.type,p.value]));
-            const represented = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`).getTime();
-            startAt = new Date(startAt.getTime() + target - represented);
-          }
-          if (startAt <= now || startAt > horizon) continue;
-          const departureKey = `${schedule.tourId}:${startAt.toISOString()}`;
-          const existing = await tx.departure.findUnique({ where: { departureKey } });
-          if (existing) continue;
-          const d = await tx.departure.create({ data: { departureKey, tourId: schedule.tourId, scheduleId: schedule.id, startAt, endAt: new Date(startAt.getTime() + (schedule.tour.durationDays ? schedule.tour.durationDays * 1440 : schedule.tour.durationMinutes) * 60000), capacity: Math.min(schedule.capacityOverride || schedule.tour.maxParticipants, schedule.tour.maxParticipants), status: 'on_sale' } });
-          created.push(d.id);
-        }
+      for (const startAt of expandSchedule(schedule, schedule.tour, now, horizon)) {
+        const departureKey = `${schedule.tourId}:${startAt.toISOString()}`;
+        if (await tx.departure.findUnique({ where: { departureKey } })) continue;
+        const d = await tx.departure.create({ data: departureData(schedule, schedule.tour, startAt, departureKey) });
+        created.push(d.id);
       }
     }
     await audit(tx, context.session.itemId, 'departures.generated', 'Schedule', args.input?.tourId || 'all', null, { count: created.length });
@@ -137,7 +120,12 @@ export async function closeDeparture(_r: any, args: any, context: any) {
     const d = await tx.departure.findUnique({ where: { id: i.departureId }, include: { assignedGuides: true } });
     if (!d || !['closed','in_progress'].includes(d.status) || d.endAt > new Date()) throw new Error('Only an ended closed/in-progress departure can complete');
     await tx.departure.update({ where: { id: d.id }, data: { status: 'completed' } });
-    await tx.booking.updateMany({ where: { departureId: d.id, status: 'checked_in' }, data: { status: 'completed' } });
+    // A booking completes only with nothing owed: captured payments cover the net total, or the channel collects.
+    const toComplete = await tx.booking.findMany({ where: { departureId: d.id, status: 'checked_in' }, include: { channel: true, payments: { where: { status: { in: ['succeeded', 'partially_refunded', 'refunded'] } } } } });
+    for (const b of toComplete) {
+      const paid = b.payments.reduce((n: number, p: any) => n + p.amount - (p.refundedAmount || 0), 0);
+      if (b.channel?.paymentModel === 'channel_collects' || paid >= b.totalCents - b.refundedCents) await tx.booking.update({ where: { id: b.id }, data: { status: 'completed' } });
+    }
     for (const a of d.assignedGuides.filter((a: any) => a.status === 'accepted')) {
       const payout = await tx.guidePayout.create({ data: { guideId: a.guideId, periodStart: d.startAt, periodEnd: d.endAt, totalCents: a.payCents, status: 'draft' } });
       await tx.guideAssignment.update({ where: { id: a.id }, data: { status: 'worked', payoutId: payout.id } });
