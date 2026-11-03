@@ -2,6 +2,7 @@ import { createAuth } from "@keystone-6/auth";
 import { config } from "@keystone-6/core";
 import "dotenv/config";
 import { models } from "./models";
+import { permissionNames } from './access';
 import { statelessSessions } from "@keystone-6/core/session";
 import { extendGraphqlSchema } from "./mutations";
 import { sendPasswordResetEmail } from "./lib/mail";
@@ -33,13 +34,7 @@ const { withAuth } = createAuth({
       role: {
         create: {
           name: "Admin",
-          canCreateTodos: true,
-          canManageAllTodos: true,
-          canSeeOtherPeople: true,
-          canEditOtherPeople: true,
-          canManagePeople: true,
-          canManageRoles: true,
-          canAccessDashboard: true,
+          ...Object.fromEntries(permissionNames.map(key => [key, true])),
         },
       },
     },
@@ -56,13 +51,7 @@ const { withAuth } = createAuth({
     role {
       id
       name
-      canCreateTodos
-      canManageAllTodos
-      canSeeOtherPeople
-      canEditOtherPeople
-      canManagePeople
-      canManageRoles
-      canAccessDashboard
+      ${permissionNames.join('\n')}
     }
   `,
 });
@@ -72,6 +61,7 @@ export default withAuth(
     db: {
       provider: "postgresql",
       url: databaseURL,
+      shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
     },
     lists: models,
     storage: {

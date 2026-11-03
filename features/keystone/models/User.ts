@@ -1,6 +1,7 @@
 import { list } from '@keystone-6/core'
 import { allOperations, denyAll } from '@keystone-6/core/access'
-import { checkbox, password, relationship, text } from '@keystone-6/core/fields'
+import { checkbox, password, relationship, text, select } from '@keystone-6/core/fields'
+import { trackingFields } from './trackingFields'
 
 import { isSignedIn, permissions, rules } from '../access'
 import type { Session } from '../access'
@@ -28,7 +29,7 @@ export const User = list({
     hideCreate: args => !permissions.canManagePeople(args),
     hideDelete: args => !permissions.canManagePeople(args),
     listView: {
-      initialColumns: ['name', 'email', 'role', 'tasks'],
+      initialColumns: ['name', 'email', 'role'],
     },
     itemView: {
       defaultFieldMode: ({ session, item }) => {
@@ -77,20 +78,10 @@ export const User = list({
         },
       },
     }),
-    tasks: relationship({
-      ref: 'Todo.assignedTo',
-      many: true,
-      access: {
-        create: permissions.canManageAllTodos,
-        update: ({ session, item }) =>
-          permissions.canManageAllTodos({ session }) || session?.itemId === item.id,
-      },
-      ui: {
-        createView: {
-          fieldMode: args => (permissions.canManageAllTodos(args) ? 'edit' : 'hidden'),
-        },
-        // itemView: { fieldMode: 'read' },
-      },
-    }),
+    onboardingStatus: select({ options: ['not_started', 'in_progress', 'completed', 'dismissed'], defaultValue: 'not_started' }),
+    bookings: relationship({ ref: 'Booking.customer', many: true }),
+    guide: relationship({ ref: 'Guide.user' }),
+    auditEvents: relationship({ ref: 'AuditEvent.actor', many: true }),
+    ...trackingFields,
   },
 });

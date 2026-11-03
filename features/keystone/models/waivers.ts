@@ -1,0 +1,9 @@
+import { text, integer, json, checkbox, timestamp } from '@keystone-6/core/fields';
+import { document } from '@keystone-6/fields-document';
+import { permissions } from '../access';
+import { domainList, name, state, rel } from './domainFields';
+export const Participant = domainList('canCheckIn', { booking: rel('Booking.participants'), ticketTypeSnapshot: json(), fullName: name(), age: integer({ validation: { min: 0 } }), email: text(), dietary: text(), medicalNotes: text({ access: { read: permissions.canReadMedicalNotes, create: () => false, update: () => false } }), waiverStatus: state(['required','signed','not_required']), checkInStatus: state(['pending','checked_in','no_show']), waiverTokenHash: text({ isIndexed: 'unique', db: { isNullable: true }, access: { read: () => false } }), signatures: rel('WaiverSignature.participant', true) }, true);
+export const WaiverTemplate = domainList('canManageWaivers', { name: name(), version: integer({ defaultValue: 1, validation: { min: 1 } }), body: document({ formatting: true }), bodyHash: text(), status: state(['draft','published','archived']), tours: rel('Tour.requiresWaiver', true), signatures: rel('WaiverSignature.template', true) }, false, {
+  validate: { update: ({ item, resolvedData, addValidationError }: any) => { if (item.status === 'published' && Object.keys(resolvedData).some(k => k !== 'updatedAt')) addValidationError('Published waiver versions are immutable'); } },
+});
+export const WaiverSignature = domainList('canCheckIn', { participant: rel('Participant.signatures'), template: rel('WaiverTemplate.signatures'), templateVersion: integer({ validation: { isRequired: true } }), signerName: name(), isGuardian: checkbox({ defaultValue: false }), minorName: text(), signedAt: timestamp({ validation: { isRequired: true } }), ip: text(), userAgent: text(), bodyHash: text({ validation: { isRequired: true } }) }, true);
