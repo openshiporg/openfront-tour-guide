@@ -15,12 +15,13 @@ import { PaymentSession } from './PaymentSession';
 import { Payment } from './Payment';
 import { Refund } from './Refund';
 import { PaymentWebhookEvent } from './PaymentWebhookEvent';
+import { ManagerApproval } from './ManagerApproval';
 import { IdempotencyKey } from './IdempotencyKey';
 export const models = {
   User, Role, OAuthApp, OAuthToken, Tour, TicketType, AddOn, MeetingPoint, CancellationPolicy, PricingRule, Schedule,
   Departure, Guide, GuideCertification, GuideAvailability, GuideAssignment, Resource, ResourceAssignment, GuidePayout,
   Booking, BookingLine, InventoryHold, Participant, WaiverTemplate, WaiverSignature, Channel, ChannelStatement,
   OperationalTask, NotificationPreference, StoreSettings, AuditEvent, PromoCode, PromoRedemption, PaymentProvider, PaymentCollection, PaymentSession,
-  Payment, Refund, PaymentWebhookEvent, IdempotencyKey,
+  Payment, Refund, PaymentWebhookEvent, IdempotencyKey, ManagerApproval,
 };
 export default models;

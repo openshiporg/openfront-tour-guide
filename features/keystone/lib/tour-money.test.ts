@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { basisPoints, settlement, refundPolicyAmount, minimumDecision, quoteTotal } from './tour-money';
+test('commission rounds once and conserves money', () => { assert.deepEqual(settlement(10001, 1500), { grossCents: 10001, commissionCents: 1500, netCents: 8501 }); assert.equal(basisPoints(1, 5000), 1); });
+test('cancellation uses snapshot rules at exact cutoff', () => { const rules = [{ hoursBefore: 24, refundBps: 10000 }, { hoursBefore: 0, refundBps: 0 }]; assert.equal(refundPolicyAmount(9999, rules, 24), 9999); assert.equal(refundPolicyAmount(9999, rules, 23.99), 0); assert.equal(refundPolicyAmount(9999, rules, -1), 0); assert.equal(refundPolicyAmount(9999, rules, -1, true), 9999); });
+test('minimum creates decision inside 24 hours, never auto cancels', () => { const now = new Date('2026-11-03T12:00:00Z'); assert.deepEqual(minimumDecision(2, 3, new Date('2026-11-04T12:00:00Z'), now), { reached: false, needsDecision: true }); assert.equal(minimumDecision(3, 3, new Date('2026-11-04T12:00:00Z'), now).needsDecision, false); });
+test('ticket and addon quote snapshots integer totals', () => { assert.deepEqual(quoteTotal([{ unitPriceCents: 4500, qty: 2, kind: 'ticket' }, { unitPriceCents: 1000, qty: 1, kind: 'addon' }], 750), { subtotalCents: 9000, addOnsCents: 1000, discountCents: 0, taxCents: 750, totalCents: 10750 }); });
+test('reject negative, fractional, overflow and excessive discount', () => { for (const f of [() => basisPoints(-1, 10), () => basisPoints(1.5, 10), () => basisPoints(10, 10001), () => quoteTotal([{ unitPriceCents: Number.MAX_SAFE_INTEGER, qty: 2, kind: 'ticket' }]), () => quoteTotal([], 0, 1)]) assert.throws(f); });

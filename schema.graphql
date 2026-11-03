@@ -4762,6 +4762,117 @@ input IdempotencyKeyCreateInput {
   updatedAt: DateTime
 }
 
+type ManagerApproval {
+  id: ID!
+  actionType: String
+  targetId: String
+  reason: String
+  amount: Int
+  requestFingerprint: String
+  requestPayload: JSON
+  status: String
+  requestedAt: DateTime
+  approvedAt: DateTime
+  consumedAt: DateTime
+  expiresAt: DateTime
+  consumedEntityType: String
+  consumedEntityId: String
+  requestedBy: User
+  approvedBy: User
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ManagerApprovalWhereUniqueInput {
+  id: ID
+}
+
+input ManagerApprovalWhereInput {
+  AND: [ManagerApprovalWhereInput!]
+  OR: [ManagerApprovalWhereInput!]
+  NOT: [ManagerApprovalWhereInput!]
+  id: IDFilter
+  actionType: StringFilter
+  targetId: StringFilter
+  reason: StringFilter
+  amount: IntNullableFilter
+  requestFingerprint: StringFilter
+  status: StringFilter
+  requestedAt: DateTimeNullableFilter
+  approvedAt: DateTimeNullableFilter
+  consumedAt: DateTimeNullableFilter
+  expiresAt: DateTimeFilter
+  consumedEntityType: StringFilter
+  consumedEntityId: StringFilter
+  requestedBy: UserWhereInput
+  approvedBy: UserWhereInput
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input ManagerApprovalOrderByInput {
+  id: OrderDirection
+  actionType: OrderDirection
+  targetId: OrderDirection
+  reason: OrderDirection
+  amount: OrderDirection
+  requestFingerprint: OrderDirection
+  status: OrderDirection
+  requestedAt: OrderDirection
+  approvedAt: OrderDirection
+  consumedAt: OrderDirection
+  expiresAt: OrderDirection
+  consumedEntityType: OrderDirection
+  consumedEntityId: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input ManagerApprovalUpdateInput {
+  actionType: String
+  targetId: String
+  reason: String
+  amount: Int
+  requestFingerprint: String
+  requestPayload: JSON
+  status: String
+  requestedAt: DateTime
+  approvedAt: DateTime
+  consumedAt: DateTime
+  expiresAt: DateTime
+  consumedEntityType: String
+  consumedEntityId: String
+  requestedBy: UserRelateToOneForUpdateInput
+  approvedBy: UserRelateToOneForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ManagerApprovalUpdateArgs {
+  where: ManagerApprovalWhereUniqueInput!
+  data: ManagerApprovalUpdateInput!
+}
+
+input ManagerApprovalCreateInput {
+  actionType: String
+  targetId: String
+  reason: String
+  amount: Int
+  requestFingerprint: String
+  requestPayload: JSON
+  status: String
+  requestedAt: DateTime
+  approvedAt: DateTime
+  consumedAt: DateTime
+  expiresAt: DateTime
+  consumedEntityType: String
+  consumedEntityId: String
+  requestedBy: UserRelateToOneForCreateInput
+  approvedBy: UserRelateToOneForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
 """
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
@@ -5008,11 +5119,38 @@ type Mutation {
   updateIdempotencyKeys(data: [IdempotencyKeyUpdateArgs!]!): [IdempotencyKey]
   deleteIdempotencyKey(where: IdempotencyKeyWhereUniqueInput!): IdempotencyKey
   deleteIdempotencyKeys(where: [IdempotencyKeyWhereUniqueInput!]!): [IdempotencyKey]
+  createManagerApproval(data: ManagerApprovalCreateInput!): ManagerApproval
+  createManagerApprovals(data: [ManagerApprovalCreateInput!]!): [ManagerApproval]
+  updateManagerApproval(where: ManagerApprovalWhereUniqueInput!, data: ManagerApprovalUpdateInput!): ManagerApproval
+  updateManagerApprovals(data: [ManagerApprovalUpdateArgs!]!): [ManagerApproval]
+  deleteManagerApproval(where: ManagerApprovalWhereUniqueInput!): ManagerApproval
+  deleteManagerApprovals(where: [ManagerApprovalWhereUniqueInput!]!): [ManagerApproval]
   endSession: Boolean!
   authenticateUserWithPassword(email: String!, password: String!): UserAuthenticationWithPasswordResult
   createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
   sendUserPasswordResetLink(email: String!): Boolean!
   redeemUserPasswordResetToken(email: String!, token: String!, password: String!): RedeemUserPasswordResetTokenResult
+  createDepartureHold(input: DepartureHoldInput!, idempotencyKey: String!): JSON
+  startBookingCheckout(input: StartBookingCheckoutInput!, idempotencyKey: String!): JSON
+  completeBookingCheckout(input: CompleteBookingCheckoutInput!, idempotencyKey: String!): JSON
+  cancelMyBooking(bookingRef: String!, email: String!, idempotencyKey: String!): JSON
+  signWaiver(input: SignWaiverInput!, idempotencyKey: String!): JSON
+  rebookWithCredit(input: RebookInput!, idempotencyKey: String!): JSON
+  generateDepartures(input: GenerateDeparturesInput, idempotencyKey: String!): JSON
+  assignGuide(input: AssignGuideInput!, idempotencyKey: String!): JSON
+  respondToAssignment(input: RespondAssignmentInput!, idempotencyKey: String!): JSON
+  assignResource(input: AssignResourceInput!, idempotencyKey: String!): JSON
+  resizeDeparture(input: ResizeDepartureInput!, idempotencyKey: String!): JSON
+  checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
+  markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
+  cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
+  closeDeparture(input: CloseDepartureInput!, idempotencyKey: String!): JSON
+  createChannelBooking(input: ChannelBookingInput!, idempotencyKey: String!): JSON
+  refundBooking(input: RefundBookingInput!, idempotencyKey: String!): JSON
+  requestRefundApproval(bookingId: ID!, reason: String!, amount: Int!): JSON
+  approveRefund(approvalId: ID!): JSON
+  generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
+  sweepDepartures(idempotencyKey: String!): JSON
 }
 
 union UserAuthenticationWithPasswordResult = UserAuthenticationWithPasswordSuccess | UserAuthenticationWithPasswordFailure
@@ -5164,10 +5302,16 @@ type Query {
   idempotencyKey(where: IdempotencyKeyWhereUniqueInput!): IdempotencyKey
   idempotencyKeys(where: IdempotencyKeyWhereInput! = {}, orderBy: [IdempotencyKeyOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: IdempotencyKeyWhereUniqueInput): [IdempotencyKey!]
   idempotencyKeysCount(where: IdempotencyKeyWhereInput! = {}): Int
+  managerApproval(where: ManagerApprovalWhereUniqueInput!): ManagerApproval
+  managerApprovals(where: ManagerApprovalWhereInput! = {}, orderBy: [ManagerApprovalOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ManagerApprovalWhereUniqueInput): [ManagerApproval!]
+  managerApprovalsCount(where: ManagerApprovalWhereInput! = {}): Int
   keystone: KeystoneMeta!
   authenticatedItem: AuthenticatedItem
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
   redirectToInit: Boolean
+  toursOnSale: JSON
+  tourAvailability(tourId: ID!, from: String!, to: String!): JSON
+  lookupBooking(bookingRef: String!, email: String!): JSON
 }
 
 union AuthenticatedItem = User
@@ -5306,4 +5450,129 @@ type KeystoneAdminUISort {
 enum KeystoneAdminUISortDirection {
   ASC
   DESC
+}
+
+input TourTicketChoice {
+  id: ID!
+  qty: Int!
+}
+
+input DepartureHoldInput {
+  departureId: ID!
+  tickets: [TourTicketChoice!]!
+  addOns: [TourTicketChoice!]
+  promoCode: String
+  token: String!
+}
+
+input BookingParticipantInput {
+  ticketTypeId: ID!
+  fullName: String!
+  age: Int
+  email: String
+  dietary: String
+  medicalNotes: String
+}
+
+input BookingLeadInput {
+  name: String!
+  email: String!
+  phone: String
+  specialRequests: String
+  pickupLocation: String
+}
+
+input StartBookingCheckoutInput {
+  holdId: ID!
+  token: String!
+  lead: BookingLeadInput!
+  participants: [BookingParticipantInput!]!
+}
+
+input CompleteBookingCheckoutInput {
+  bookingRef: String!
+  token: String!
+}
+
+input ChannelBookingInput {
+  departureId: ID!
+  source: String!
+  channelId: ID
+  paymentMethod: String
+  tickets: [TourTicketChoice!]!
+  addOns: [TourTicketChoice!]
+  promoCode: String
+  lead: BookingLeadInput!
+  participants: [BookingParticipantInput!]!
+}
+
+input SignWaiverInput {
+  token: String!
+  signerName: String!
+  isGuardian: Boolean
+  minorName: String
+}
+
+input RefundBookingInput {
+  bookingId: ID!
+  amountCents: Int!
+  reason: String!
+  approvalId: ID
+  cancelBooking: Boolean
+}
+
+input CancelDepartureInput {
+  departureId: ID!
+  reason: String!
+  offerCredit: Boolean
+}
+
+input RebookInput {
+  token: String!
+  departureId: ID!
+}
+
+input GenerateDeparturesInput {
+  tourId: ID
+  days: Int
+}
+
+input AssignGuideInput {
+  departureId: ID!
+  guideId: ID!
+  role: String
+}
+
+input RespondAssignmentInput {
+  assignmentId: ID!
+  status: String!
+}
+
+input AssignResourceInput {
+  departureId: ID!
+  resourceId: ID!
+  quantity: Int!
+}
+
+input ResizeDepartureInput {
+  departureId: ID!
+  capacity: Int!
+}
+
+input ParticipantActionInput {
+  participantId: ID!
+}
+
+input BookingActionInput {
+  bookingId: ID!
+}
+
+input CloseDepartureInput {
+  departureId: ID!
+}
+
+input ChannelStatementInput {
+  channelId: ID!
+  from: String!
+  to: String!
 }

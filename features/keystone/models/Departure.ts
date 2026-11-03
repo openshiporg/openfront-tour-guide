@@ -3,7 +3,7 @@ import { integer, text, timestamp, virtual } from '@keystone-6/core/fields';
 import { domainList, name, state, rel } from './domainFields';
 async function occupancy(item: any, context: any) {
   const [bookings, holds, assignments] = await Promise.all([
-    context.prisma.booking.aggregate({ where: { departureId: item.id, status: { in: ['confirmed','checked_in','completed','no_show','partially_refunded'] } }, _sum: { seats: true } }),
+    context.prisma.booking.aggregate({ where: { departureId: item.id, status: { in: ['confirmed','checked_in','completed','no_show'] } }, _sum: { seats: true } }),
     context.prisma.inventoryHold.aggregate({ where: { departureId: item.id, status: 'active', expiresAt: { gt: new Date() } }, _sum: { quantity: true } }),
     context.prisma.guideAssignment.count({ where: { departureId: item.id, status: { in: ['accepted','worked'] } } }),
   ]);

@@ -12,25 +12,27 @@ generator client {
 }
 
 model User {
-  id                       String       @id @default(cuid())
-  name                     String       @default("")
-  email                    String       @unique @default("")
-  password                 String
-  role                     Role?        @relation("User_role", fields: [roleId], references: [id])
-  roleId                   String?      @map("role")
-  onboardingStatus         String?      @default("not_started")
-  bookings                 Booking[]    @relation("Booking_customer")
-  guide                    Guide?       @relation("Guide_user")
-  auditEvents              AuditEvent[] @relation("AuditEvent_actor")
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @default(now()) @updatedAt
-  passwordResetToken       String?
-  passwordResetIssuedAt    DateTime?
-  passwordResetRedeemedAt  DateTime?
-  from_OAuthToken_user     OAuthToken[] @relation("OAuthToken_user")
-  from_Payment_processedBy Payment[]    @relation("Payment_processedBy")
-  from_Refund_requestedBy  Refund[]     @relation("Refund_requestedBy")
-  from_Refund_approvedBy   Refund[]     @relation("Refund_approvedBy")
+  id                               String            @id @default(cuid())
+  name                             String            @default("")
+  email                            String            @unique @default("")
+  password                         String
+  role                             Role?             @relation("User_role", fields: [roleId], references: [id])
+  roleId                           String?           @map("role")
+  onboardingStatus                 String?           @default("not_started")
+  bookings                         Booking[]         @relation("Booking_customer")
+  guide                            Guide?            @relation("Guide_user")
+  auditEvents                      AuditEvent[]      @relation("AuditEvent_actor")
+  createdAt                        DateTime          @default(now())
+  updatedAt                        DateTime          @default(now()) @updatedAt
+  passwordResetToken               String?
+  passwordResetIssuedAt            DateTime?
+  passwordResetRedeemedAt          DateTime?
+  from_OAuthToken_user             OAuthToken[]      @relation("OAuthToken_user")
+  from_Payment_processedBy         Payment[]         @relation("Payment_processedBy")
+  from_Refund_requestedBy          Refund[]          @relation("Refund_requestedBy")
+  from_Refund_approvedBy           Refund[]          @relation("Refund_approvedBy")
+  from_ManagerApproval_requestedBy ManagerApproval[] @relation("ManagerApproval_requestedBy")
+  from_ManagerApproval_approvedBy  ManagerApproval[] @relation("ManagerApproval_approvedBy")
 
   @@index([roleId])
 }
@@ -807,6 +809,37 @@ model IdempotencyKey {
   lockedAt       DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @default(now()) @updatedAt
+}
+
+model ManagerApproval {
+  id                 String    @id @default(cuid())
+  actionType         String
+  targetId           String    @default("")
+  reason             String    @default("")
+  amount             Int?
+  requestFingerprint String    @default("")
+  requestPayload     Json?
+  status             String    @default("pending")
+  requestedAt        DateTime? @default(now())
+  approvedAt         DateTime?
+  consumedAt         DateTime?
+  expiresAt          DateTime
+  consumedEntityType String    @default("")
+  consumedEntityId   String    @default("")
+  requestedBy        User?     @relation("ManagerApproval_requestedBy", fields: [requestedById], references: [id])
+  requestedById      String?   @map("requestedBy")
+  approvedBy         User?     @relation("ManagerApproval_approvedBy", fields: [approvedById], references: [id])
+  approvedById       String?   @map("approvedBy")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @default(now()) @updatedAt
+
+  @@index([actionType])
+  @@index([targetId])
+  @@index([status])
+  @@index([requestedAt])
+  @@index([expiresAt])
+  @@index([requestedById])
+  @@index([approvedById])
 }
 
 enum TourKindType {
