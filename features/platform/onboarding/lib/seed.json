@@ -2,7 +2,7 @@
   "settings": { "name": "Harbor Lights Tours", "timezone": "America/New_York", "address": "Charleston, SC", "currencyCode": "USD", "refundApprovalThresholdCents": 10000, "taxBps": 0 },
   "paymentProvider": { "name": "Stripe", "code": "pp_stripe" },
   "roles": [
-    { "name": "Operations Manager", "permissions": ["canAccessDashboard", "canManageTours", "canManageDepartures", "canManageBookings", "canManageGuides", "canManageResources", "canManageChannels", "canManagePromos", "canManageWaivers", "canManageCustomers", "canCheckIn", "canReadMedicalNotes", "canReadPayments", "canReadAudit"] },
+    { "name": "Operations Manager", "permissions": ["canAccessDashboard", "canManageTours", "canManageDepartures", "canManageBookings", "canManageGuides", "canManageResources", "canManageChannels", "canManagePromos", "canManageWaivers", "canManageCustomers", "canManageSettings", "canCheckIn", "canReadMedicalNotes", "canReadPayments", "canReadAudit"] },
     { "name": "Guide", "permissions": ["canAccessDashboard", "canCheckIn", "canReadMedicalNotes"] },
     { "name": "Customer", "permissions": [] }
   ],
