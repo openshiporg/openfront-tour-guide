@@ -318,6 +318,8 @@ export async function rebookWithCredit(_r: any, args: any, context: any) {
 export async function createChannelBooking(_r: any, args: any, context: any) {
   const user = await authorize(context, 'canManageBookings'); const i = args.input;
   if (!['phone', 'walk_up', 'reseller'].includes(i.source)) throw new Error('Invalid booking source');
+  if (i.paymentMethod !== 'cash') throw new Error('Only recorded cash payments are supported; use online checkout for cards');
+  if (!String(i.lead?.name || '').trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.lead?.email || '')) throw new Error('Lead name and valid email required');
   return command(context, args.idempotencyKey, 'createChannelBooking', i, [`departure:${i.departureId}`], async tx => {
     let channel: any = null;
     if (i.source === 'reseller') { channel = await tx.channel.findUnique({ where: { id: i.channelId } }); if (!channel?.active) throw new Error('Channel unavailable'); }

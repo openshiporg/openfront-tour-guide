@@ -10,7 +10,7 @@ import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, money, timeIn } from '../../lib/format'
 import { refundAction } from '../actions/bookings'
 
-export const STATUSES = ['pending_payment', 'confirmed', 'checked_in', 'completed', 'no_show', 'cancelled', 'refunded', 'partially_refunded']
+import { STATUSES } from '../statuses'
 
 export function BookingsClient({ rows, counts, active }: { rows: any[]; counts: Record<string, number>; active: string | null }) {
   const router = useRouter()
