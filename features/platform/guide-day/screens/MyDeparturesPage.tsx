@@ -15,6 +15,7 @@ export async function MyDeparturesPage() {
         {!data ? <p role="alert" className="text-sm text-rose-600">Your schedule could not be loaded.</p>
           : !data.guide ? <p className="text-sm text-muted-foreground">Your login is not linked to a guide profile yet, so there is no schedule to show. Ask an operations manager to link it on the Guides page.</p>
           : <>
+            <p><Link href="/dashboard/platform/pickup-day" className="inline-flex h-9 items-center rounded-md border px-3 text-sm">Pickup sheet for the day</Link></p>
             <p className="text-sm text-muted-foreground">{data.guide.name}: departures you have accepted in the next 14 days. Offers you have not answered are on the Guides page.</p>
             {[...days.entries()].map(([day, rows]) => (
               <section key={day} className="space-y-2" aria-label={day}>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { createChannelBooking } from '../features/keystone/mutations/tour-checkout';
-import { myDepartures, pickupSheet } from '../features/keystone/mutations/tour-guide-day';
+import { myDepartures, pickupSheet, dayPickupSheet } from '../features/keystone/mutations/tour-guide-day';
 const p: any = new PrismaClient(), tag = 'depth-' + randomUUID().slice(0, 8);
 const key = () => tag + randomUUID();
 async function main() {
@@ -51,10 +51,31 @@ async function main() {
   assert.equal(((await pickupSheet(null, { departureId: other.id }, ops.ctx)) as any).totalGuests, 1);
   await assert.rejects(() => pickupSheet(null, { departureId: mine.id }, nocheck.ctx), /Not authorized/);
   await assert.rejects(() => pickupSheet(null, { departureId: 'nope' }, ops.ctx), /Departure not found/);
+  // 4b. Pickup sheet for the whole day: every running departure that starts that local day, one query for bookings, same access rule.
+  const local = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
+  const later = await p.departure.create({ data: { tourId: tour.id, departureKey: tag + 'later' + randomUUID(), startAt: new Date(+mine.startAt + 3 * 3600000), endAt: new Date(+mine.startAt + 4 * 3600000), capacity: 20, status: 'on_sale', bookingCutoffMinutes: 0 } });
+  const sameDayOther = await p.departure.create({ data: { tourId: tour.id, departureKey: tag + 'sdo' + randomUUID(), startAt: new Date(+mine.startAt + 1 * 3600000), endAt: new Date(+mine.startAt + 2 * 3600000), capacity: 20, status: 'on_sale', bookingCutoffMinutes: 0 } });
+  await asg(later, guide1, 'accepted'); await asg(sameDayOther, guide2, 'accepted');
+  await book(later, 2, 'Late Lead', ['Late Lead', 'Late Two']); await book(sameDayOther, 1, 'Other Same Day', ['Other Same Day']);
+  const day = local(mine.startAt);
+  const dayDeps = (r: any) => r.departures.filter((d: any) => [mine.id, later.id, sameDayOther.id].includes(d.id)).map((d: any) => d.id);
+  const ds: any = await dayPickupSheet(null, { day }, ops.ctx);
+  assert.deepEqual(dayDeps(ds), [mine.id, sameDayOther.id, later.id], 'operations: all of the day, in time order');
+  const dsMine = ds.departures.find((d: any) => d.id === mine.id); assert.equal(dsMine.totalGuests, 6); assert.deepEqual(dsMine.stops.map((s: any) => s.name), ['Hotel Meeting', 'Meet at the meeting point']);
+  assert.deepEqual(dsMine.stops, ((await pickupSheet(null, { departureId: mine.id }, ops.ctx)) as any).stops, 'same stops as the per-departure sheet');
+  assert.equal(ds.totalGuests, ds.departures.reduce((n: number, d: any) => n + d.totalGuests, 0));
+  const gs: any = await dayPickupSheet(null, { day }, g1.ctx);
+  assert.deepEqual(dayDeps(gs), [mine.id, later.id], 'guide: only their own accepted departures that day');
+  assert.deepEqual((await dayPickupSheet(null, { day }, nolink.ctx) as any).departures.filter((d: any) => [mine.id, later.id, sameDayOther.id].includes(d.id)), [], 'unlinked login sees none');
+  await assert.rejects(() => dayPickupSheet(null, { day }, nocheck.ctx), /Not authorized/);
+  await assert.rejects(() => dayPickupSheet(null, { day: 'tomorrow' }, ops.ctx), /Choose a day/);
+  const leak = JSON.stringify(ds); for (const bad of ['@secret.example', 'SECRET-MEDICAL', 'totalCents', 'paid', 'refund']) assert.ok(!leak.includes(bad), 'day sheet leaks ' + bad);
+  await p.departure.update({ where: { id: later.id }, data: { status: 'weather_cancelled' } });
+  assert.deepEqual(dayDeps(await dayPickupSheet(null, { day }, g1.ctx)), [mine.id], 'cancelled departures drop off');
   // 5. Cancelled bookings drop off the sheet.
   await set(b2, { status: 'cancelled' });
   assert.equal(((await pickupSheet(null, { departureId: mine.id }, g1.ctx)) as any).totalGuests, 5);
-  console.log('PASS guide day: my departures scoping, pickup sheet grouping, no payment/email/medical data, access');
+  console.log('PASS guide day: my departures scoping, pickup sheet grouping, whole-day sheet, no payment/email/medical data, access');
   await p.$disconnect();
 }
 main().catch(async e => { console.error(e); await p.$disconnect(); process.exit(1); });

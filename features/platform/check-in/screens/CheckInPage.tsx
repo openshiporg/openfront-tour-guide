@@ -28,6 +28,7 @@ export async function CheckInPage({ searchParams }: { searchParams: Promise<{ de
   const rows = await getDepartures(from.toISOString(), new Date(from.getTime() + 26 * 3600000).toISOString())
   return (
     <PageContainer title="Check-in" breadcrumbs={crumbs}>
+      <p className="px-4 pt-4"><Link href="/dashboard/platform/pickup-day" className="inline-flex h-9 items-center rounded-md border px-3 text-sm">Pickup sheet for the day</Link></p>
       <ul className="space-y-2 p-4">
         {rows.map((d) => <li key={d.id}><Link href={`/dashboard/platform/check-in?departure=${d.id}`} className="block rounded-xl border p-3 hover:bg-muted"><span className="block truncate text-sm font-medium">{d.tourName}</span><span className="block text-sm text-muted-foreground">{timeIn(d.startAt)} · <span className="font-mono">{d.booked}/{d.capacity}</span></span></Link></li>)}
         {!rows.length && <li className="text-sm text-muted-foreground">No departures today. Guides see only the departures they have accepted.</li>}

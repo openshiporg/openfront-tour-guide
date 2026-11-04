@@ -5336,6 +5336,7 @@ type Query {
   participantWaiver(participantId: ID!): JSON
   myDepartures(days: Int): JSON
   pickupSheet(departureId: ID!): JSON
+  dayPickupSheet(day: String!): JSON
   salesReport(from: String!, to: String!, basis: String): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }

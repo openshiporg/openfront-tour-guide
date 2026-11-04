@@ -1,6 +1,6 @@
 import { authorize, userFacingError } from '../lib/tour-command';
 import { zonedStart } from '../lib/tour-schedule';
-import { assertDepartureAccess } from '../lib/tour-scope';
+import { assertDepartureAccess, scopedDepartureFilter } from '../lib/tour-scope';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'];
 const WORKING = ['accepted', 'worked'];
@@ -36,6 +36,19 @@ export async function myDepartures(_r: any, args: any, context: any) {
   } catch (e) { throw userFacingError(e); }
 }
 
+const PICKUP_SELECT = { bookingRef: true, guestName: true, guestPhone: true, pickupLocation: true, specialRequests: true, seats: true, departureId: true, participants: { select: { fullName: true }, orderBy: { fullName: 'asc' } } } as const;
+// Group bookings into pickup stops. Only what a driver needs: no amounts, payment state, refunds, email or medical notes.
+function stopsFrom(bookings: any[]) {
+  const stops = new Map<string, any>();
+  for (const b of bookings) {
+    const name = (b.pickupLocation || '').trim() || 'Meet at the meeting point';
+    if (!stops.has(name)) stops.set(name, { name, guests: 0, bookings: [] });
+    const s = stops.get(name); s.guests += b.seats || 0;
+    s.bookings.push({ bookingRef: b.bookingRef, leadName: b.guestName, phone: b.guestPhone || '', partySize: b.seats || 0, names: b.participants.map((p: any) => p.fullName).filter(Boolean), notes: (b.specialRequests || '').trim() });
+  }
+  return [...stops.values()].sort((a, b) => (a.name.startsWith('Meet at') ? 1 : 0) - (b.name.startsWith('Meet at') ? 1 : 0) || a.name.localeCompare(b.name));
+}
+
 // Printable pickup sheet. Operations staff (departures or bookings) may open any departure; a guide only their own.
 // It carries what a driver needs: where, when, who, party size and notes. No amounts, payment state, refunds, email or medical notes.
 export async function pickupSheet(_r: any, args: any, context: any) {
@@ -45,15 +58,28 @@ export async function pickupSheet(_r: any, args: any, context: any) {
     const d = await db.departure.findUnique({ where: { id: String(args.departureId || '') }, include: { tour: { select: { name: true, meetingPoint: { select: { name: true, address: true, instructions: true } } } }, assignedGuides: { include: { guide: { select: { name: true, userId: true } } } } } });
     if (!d) throw new Error('Departure not found');
     await assertDepartureAccess(db, user, d.id);
-    const bookings = await db.booking.findMany({ where: { departureId: d.id, status: { in: LIVE } }, orderBy: [{ pickupLocation: 'asc' }, { bookingRef: 'asc' }], select: { bookingRef: true, guestName: true, guestPhone: true, pickupLocation: true, specialRequests: true, seats: true, participants: { select: { fullName: true }, orderBy: { fullName: 'asc' } } } });
-    const stops = new Map<string, any>();
-    for (const b of bookings) {
-      const name = (b.pickupLocation || '').trim() || 'Meet at the meeting point';
-      if (!stops.has(name)) stops.set(name, { name, guests: 0, bookings: [] });
-      const s = stops.get(name); s.guests += b.seats || 0;
-      s.bookings.push({ bookingRef: b.bookingRef, leadName: b.guestName, phone: b.guestPhone || '', partySize: b.seats || 0, names: b.participants.map((p: any) => p.fullName).filter(Boolean), notes: (b.specialRequests || '').trim() });
-    }
-    const list = [...stops.values()].sort((a, b) => (a.name.startsWith('Meet at') ? 1 : 0) - (b.name.startsWith('Meet at') ? 1 : 0) || a.name.localeCompare(b.name));
+    const bookings = await db.booking.findMany({ where: { departureId: d.id, status: { in: LIVE } }, orderBy: [{ pickupLocation: 'asc' }, { bookingRef: 'asc' }], select: PICKUP_SELECT });
+    const list = stopsFrom(bookings);
     return { departure: { id: d.id, startAt: d.startAt, tourName: d.tour.name, meetingPoint: d.tour.meetingPoint || null, guides: d.assignedGuides.filter((a: any) => WORKING.includes(a.status)).map((a: any) => a.guide?.name).filter(Boolean) }, totalGuests: list.reduce((n, s) => n + s.guests, 0), stops: list };
+  } catch (e) { throw userFacingError(e); }
+}
+
+// Every departure starting on one day (shop timezone), one page to print. Same access rule as the per-departure sheet: operations staff see
+// all of the day's departures, a guide only the ones where their own assignment is accepted or worked. Bookings are read in ONE query for the whole day.
+export async function dayPickupSheet(_r: any, args: any, context: any) {
+  const user = await authorize(context, 'canCheckIn');
+  try {
+    const db = context.prisma, tz = await zone(db), day = String(args.day || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Choose a day');
+    const next = new Date(`${day}T12:00:00Z`); next.setUTCDate(next.getUTCDate() + 1); // calendar arithmetic, so a 23 or 25 hour DST day is still one local day
+    const from = zonedStart(day, '00:00', tz), to = zonedStart(next.toISOString().slice(0, 10), '00:00', tz);
+    const scope = await scopedDepartureFilter(db, user);
+    const deps = await db.departure.findMany({ where: { startAt: { gte: from, lt: to }, status: { notIn: ['cancelled', 'weather_cancelled'] }, ...(scope || {}) }, orderBy: { startAt: 'asc' }, take: 60, include: { tour: { select: { name: true, meetingPoint: { select: { name: true, address: true } } } }, assignedGuides: { include: { guide: { select: { name: true } } } } } });
+    const bookings = deps.length ? await db.booking.findMany({ where: { departureId: { in: deps.map((d: any) => d.id) }, status: { in: LIVE } }, orderBy: [{ pickupLocation: 'asc' }, { bookingRef: 'asc' }], select: PICKUP_SELECT }) : [];
+    const departures = deps.map((d: any) => {
+      const stops = stopsFrom(bookings.filter((b: any) => b.departureId === d.id));
+      return { id: d.id, startAt: d.startAt, tourName: d.tour.name, meetingPoint: d.tour.meetingPoint || null, guides: d.assignedGuides.filter((a: any) => WORKING.includes(a.status)).map((a: any) => a.guide?.name).filter(Boolean), totalGuests: stops.reduce((n: number, s: any) => n + s.guests, 0), stops };
+    });
+    return { day, timezone: tz, totalGuests: departures.reduce((n: number, d: any) => n + d.totalGuests, 0), departures };
   } catch (e) { throw userFacingError(e); }
 }
