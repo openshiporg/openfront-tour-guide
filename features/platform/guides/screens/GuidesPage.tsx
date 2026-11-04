@@ -4,9 +4,11 @@ import { dayIn, money, timeIn } from '../../lib/format'
 import { getGuides } from '../actions/guides'
 import { getBookingOptions } from '../../bookings/actions/bookings'
 import { GuideAssignments } from '../components/GuideAssignments'
+import { getSettlements } from '../../channels/actions/settlement'
+import { SettlementRows } from '../../channels/components/SettlementActions'
 
 export async function GuidesPage() {
-  const [guides, { departures }] = await Promise.all([getGuides(), getBookingOptions()])
+  const [guides, { departures }, settlements] = await Promise.all([getGuides(), getBookingOptions(), getSettlements()])
   const soon = Date.now() + 30 * 86400000
   return (
     <PageContainer title="Guides" breadcrumbs={[{ type: 'link', label: 'Dashboard', href: '/dashboard' }, { type: 'page', label: 'Guides' }]}>
@@ -23,6 +25,7 @@ export async function GuidesPage() {
           </li>
         ))}
       </ul>
+      <SettlementRows kind="payout" rows={settlements.guidePayouts} />
     </PageContainer>
   )
 }
