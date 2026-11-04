@@ -10,6 +10,7 @@ type AccessArgs = { session?: Session };
 export const isSignedIn = ({ session }: AccessArgs) => Boolean(session?.itemId);
 export const permissions = Object.fromEntries(permissionNames.map(key => [key, ({ session }: AccessArgs) => session?.data.role?.[key] === true])) as Record<Permission, (args: AccessArgs) => boolean>;
 export const rules = {
-  canReadPeople: ({ session }: AccessArgs) => !session ? false : session.data.role?.canSeeOtherPeople ? true : { id: { equals: session.itemId } },
+  // Customers are Users with bookings: canManageCustomers reads them too (editing stays with canEditOtherPeople).
+  canReadPeople: ({ session }: AccessArgs) => !session ? false : (session.data.role?.canSeeOtherPeople || session.data.role?.canManageCustomers) ? true : { id: { equals: session.itemId } },
   canUpdatePeople: ({ session }: AccessArgs) => !session ? false : session.data.role?.canEditOtherPeople ? true : { id: { equals: session.itemId } },
 };
