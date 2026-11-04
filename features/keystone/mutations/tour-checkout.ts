@@ -180,7 +180,7 @@ async function bookingView(prisma: any, booking: any) {
   const full = await prisma.booking.findUnique({ where: { id: booking.id }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true, checkInStatus: true } } } });
   const meeting = full.departure?.tour?.meetingPoint;
   return {
-    bookingRef: full.bookingRef, status: full.status, totalCents: full.totalCents, refundedCents: full.refundedCents, currencyCode: full.currencyCode, seats: full.seats,
+    bookingRef: full.bookingRef, manageToken: derivedToken('manage', full.id), status: full.status, totalCents: full.totalCents, refundedCents: full.refundedCents, currencyCode: full.currencyCode, seats: full.seats,
     tourName: full.tourSnapshot?.name || full.departure?.tour?.name, startAt: full.departure?.startAt, endAt: full.departure?.endAt, timezone: full.tourSnapshot?.timezone,
     meetingPoint: meeting ? { name: meeting.name, address: meeting.address, instructions: meeting.instructions, mapLink: meeting.mapLink } : full.tourSnapshot?.meetingPoint || null,
     lines: full.lines.map((l: any) => ({ name: l.name, qty: l.qty, unitPriceCents: l.unitPriceCents, kind: l.kind })),
@@ -262,6 +262,7 @@ export async function cancelMyBooking(_r: any, args: any, context: any) {
   if (!booking || norm(booking.guestEmail) !== norm(args.email)) throw new Error('Booking not found');
   if (booking.status !== 'confirmed') throw new Error('Only confirmed bookings can be cancelled');
   if (booking.departure.startAt <= new Date()) throw new Error('Departure has started');
+  if (booking.departure.startAt.getTime() - (booking.departure.bookingCutoffMinutes ?? 0) * 60000 <= Date.now()) throw new Error('Online cancellation closed before the start. Contact the operator.');
   const refundable = booking.totalCents - booking.refundedCents;
   const amount = refundPolicyAmount(refundable, booking.policySnapshot?.rules || [], (booking.departure.startAt.getTime() - Date.now()) / 3600000);
   await issueRefund(context.prisma, { bookingId: booking.id, amount, reason: 'Guest cancellation per policy', key: `cancel:${booking.id}:${args.idempotencyKey}`, actorId: null, cancel: true });

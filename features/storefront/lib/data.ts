@@ -65,3 +65,15 @@ export async function signWaiver(input: { token: string; signerName: string; isG
   const r = await call(`mutation($i:SignWaiverInput!,$k:String!){ signWaiver(input:$i, idempotencyKey:$k) }`, { i: input, k: key })
   return r.ok ? { ok: true as const } : r
 }
+export async function manage(bookingRef: string, token: string) {
+  const r = await call<{ manageBooking: any }>(`query($r:String!,$t:String!){ manageBooking(bookingRef:$r, token:$t) }`, { r: bookingRef, t: token })
+  return r.ok ? { ok: true as const, booking: r.data.manageBooking } : r
+}
+export async function manageCancel(bookingRef: string, token: string, key: string) {
+  const r = await call<{ cancelManagedBooking: any }>(`mutation($r:String!,$t:String!,$k:String!){ cancelManagedBooking(bookingRef:$r, token:$t, idempotencyKey:$k) }`, { r: bookingRef, t: token, k: key })
+  return r.ok ? { ok: true as const, result: r.data.cancelManagedBooking } : r
+}
+export async function manageReschedule(bookingRef: string, token: string, departureId: string, key: string) {
+  const r = await call<{ rescheduleManagedBooking: any }>(`mutation($r:String!,$t:String!,$d:ID!,$k:String!){ rescheduleManagedBooking(bookingRef:$r, token:$t, departureId:$d, idempotencyKey:$k) }`, { r: bookingRef, t: token, d: departureId, k: key })
+  return r.ok ? { ok: true as const, result: r.data.rescheduleManagedBooking } : r
+}

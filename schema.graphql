@@ -5134,6 +5134,8 @@ type Mutation {
   startBookingCheckout(input: StartBookingCheckoutInput!, idempotencyKey: String!): JSON
   completeBookingCheckout(input: CompleteBookingCheckoutInput!, idempotencyKey: String!): JSON
   cancelMyBooking(bookingRef: String!, email: String!, idempotencyKey: String!): JSON
+  cancelManagedBooking(bookingRef: String!, token: String!, idempotencyKey: String!): JSON
+  rescheduleManagedBooking(bookingRef: String!, token: String!, departureId: ID!, idempotencyKey: String!): JSON
   signWaiver(input: SignWaiverInput!, idempotencyKey: String!): JSON
   rebookWithCredit(input: RebookInput!, idempotencyKey: String!): JSON
   generateDepartures(input: GenerateDeparturesInput, idempotencyKey: String!): JSON
@@ -5328,6 +5330,7 @@ type Query {
   toursOnSale: JSON
   tourAvailability(tourId: ID!, from: String!, to: String!): JSON
   lookupBooking(bookingRef: String!, email: String!): JSON
+  manageBooking(bookingRef: String!, token: String!): JSON
   operatorBookingByKey(idempotencyKey: String!): JSON
   weatherCancellations: JSON
   participantWaiver(participantId: ID!): JSON
