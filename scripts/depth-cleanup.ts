@@ -6,7 +6,7 @@ async function main() {
   const tours = await p.tour.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
-  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example'] } }, select: { id: true } });
+  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example'] } }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
   const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);
@@ -25,6 +25,7 @@ async function main() {
   await p.$transaction(async (tx: any) => {
     const parts = await tx.participant.findMany({ where: { bookingId: { in: bIds } }, select: { id: true } });
     await tx.waiverSignature.deleteMany({ where: { participantId: { in: parts.map((x: any) => x.id) } } });
+    await tx.auditEvent.deleteMany({ where: { action: 'waiver.captured_on_site', targetId: { in: parts.map((x: any) => x.id) } } });
     await tx.participant.deleteMany({ where: { bookingId: { in: bIds } } });
     await tx.bookingLine.deleteMany({ where: { bookingId: { in: bIds } } });
     const holdIds = (await tx.inventoryHold.findMany({ where: { departureId: { in: depIds } }, select: { id: true } })).map((h: any) => h.id);
@@ -51,6 +52,7 @@ async function main() {
     await tx.addOn.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
     await tx.notificationPreference.deleteMany({ where: { email: { startsWith: 'depth-' } } });
+    await tx.waiverTemplate.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.resource.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });

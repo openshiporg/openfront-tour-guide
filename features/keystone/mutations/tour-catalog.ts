@@ -93,7 +93,7 @@ export async function placeHold(tx: any, input: any, actorId: string | null, req
     return { holdId: hold.id, expiresAt: hold.expiresAt, quote };
 }
 
-function plainText(node: any): string {
+export function plainText(node: any): string {
   if (!node) return '';
   if (Array.isArray(node)) return node.map(plainText).join('\n');
   if (typeof node.text === 'string') return node.text;
