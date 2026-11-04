@@ -50,6 +50,10 @@ async function main() {
   assert.equal(await p.auditEvent.count({where:{targetId:statement.id,action:'channel.statement_paid'}}),1);
   await p.role.update({where:{id:role.id},data:{canManagePayments:false}});
   await assert.rejects(()=>transitionChannelStatement(null,stArgs,c),/Not authorized/);
+  await p.pricingRule.create({data:{name:tag,tourId:tour.id,ticketTypeId:ticket.id,overridePriceCents:2500}});
+  const priced=await createChannelBooking(null,{input:{...input,source:'phone',channelId:undefined},idempotencyKey:key()},c);
+  assert.equal((await p.booking.findUnique({where:{bookingRef:priced.bookingRef}})).totalCents,2500);
+  console.log('PASS pricing rule snapshot');
   console.log('PASS booking success/replay/mismatch/card refusal/capacity; guide offer/accept/invalid/overlap; payout state/reference/race/audit; statement invoice/paid/replay/audit; revoked replay permission');
 }
 main().finally(()=>p.$disconnect()).catch(e=>{console.error(e);process.exitCode=1});

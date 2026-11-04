@@ -1,5 +1,6 @@
 import { command, departureOccupancy, opaqueToken, hashToken, authorize, audit } from '../lib/tour-command';
 import { quoteTotal, basisPoints } from '../lib/tour-money';
+import { applyPricingRules } from '../lib/tour-pricing';
 import { lockTransactionKey } from '../lib/tour-command';
 
 export async function releaseHoldPromos(tx: any, holdIds: string[]) {
@@ -50,12 +51,14 @@ export async function placeHold(tx: any, input: any, actorId: string | null, req
     if (!Array.isArray(input.tickets) || !input.tickets.length || input.tickets.length > 20) throw new Error('Choose ticket quantities');
     const lines = [];
     let seats = 0;
+    const pricingRules = await tx.pricingRule.findMany({ where: { tourId: d.tourId } });
     for (const chosen of input.tickets) {
       if (!Number.isSafeInteger(chosen.qty) || chosen.qty < 1 || chosen.qty > 100) throw new Error('Invalid quantity');
       const ticket = await tx.ticketType.findFirst({ where: { id: chosen.id, tourId: d.tourId, active: true } });
       if (!ticket) throw new Error('Ticket not offered on this tour');
       seats += ticket.countsTowardCapacity ? ticket.seatsUsed * chosen.qty : 0;
-      lines.push({ catalogId: ticket.id, name: ticket.name, unitPriceCents: ticket.priceCents, qty: chosen.qty, seatsUsed: ticket.countsTowardCapacity ? ticket.seatsUsed : 0, kind: 'ticket', minAge: ticket.minAge, maxAge: ticket.maxAge });
+      const priced = applyPricingRules(ticket.priceCents, ticket.id, d.startAt, d.tour.timezone || 'America/New_York', pricingRules);
+      lines.push({ catalogId: ticket.id, name: ticket.name, unitPriceCents: priced.unitPriceCents, basePriceCents: ticket.priceCents, pricingRuleId: priced.ruleId, qty: chosen.qty, seatsUsed: ticket.countsTowardCapacity ? ticket.seatsUsed : 0, kind: 'ticket', minAge: ticket.minAge, maxAge: ticket.maxAge });
     }
     if (!seats || seats > o.remaining) throw new Error('Not enough seats');
     if ((input.addOns || []).length > 20) throw new Error('Too many add-ons');
