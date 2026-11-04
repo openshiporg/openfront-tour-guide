@@ -1,7 +1,7 @@
 import { authorize, humanCode, hashToken, derivedToken, audit } from '../lib/tour-command';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { assignGuide, respondToAssignment, assignResource, checkInParticipant } from './tour-operations';
-import { createChannelBooking, refreshDepartureStatus } from './tour-checkout';
+import { createChannelBooking, refreshDepartureStatus, refundBooking } from './tour-checkout';
 import { weatherCancelDeparture } from './tour-weather';
 import { permissionNames } from '../access';
 
@@ -108,6 +108,17 @@ export async function seedTourActivity(_r: any, { template, seed }: { template: 
   // Check some participants in on the nearest departures.
   const soon = await p.participant.findMany({ where: { booking: { status: 'confirmed', departure: { startAt: { lt: new Date(now.getTime() + 36 * 3600000) } } } }, take: 6 });
   for (const part of soon) { try { await checkInParticipant(null, { input: { participantId: part.id }, idempotencyKey: idem(`ci:${part.id}`) }, context); } catch { /* ignored */ } }
+  // One guest who paid and then cancelled: a real cash booking refunded in full through the normal refund path (payment, refund row, audit),
+  // so the sales report's cancellation rate is not zero on a fresh install.
+  const cancelDep = sellable.find((d: any) => d.startAt.getTime() - now.getTime() > 6 * 86400000 && d.tour.slug !== 'dolphin-boat') || sellable[sellable.length - 1];
+  if (cancelDep) {
+    try {
+      const t = (await p.ticketType.findMany({ where: { tourId: cancelDep.tourId } }))[0];
+      const made: any = await createChannelBooking(null, { idempotencyKey: idem('cancelled-sale'), input: { departureId: cancelDep.id, source: 'phone', paymentMethod: 'cash', tickets: [{ id: t.id, qty: 2 }], lead: { name: names[3 % names.length], email: 'cancelled.guest@guests.example', phone: '843-555-0111' }, participants: [0, 1].map(k => ({ ticketTypeId: t.id, fullName: `${names[3 % names.length]} ${k}`, age: 30 })) } }, context);
+      const booking = await p.booking.findUnique({ where: { bookingRef: made.bookingRef } });
+      await refundBooking(null, { input: { bookingId: booking.id, amountCents: booking.totalCents, reason: 'Guest cancelled: change of plans', cancelBooking: true }, idempotencyKey: idem('cancelled-sale-refund') }, context);
+    } catch { /* full departure: the seed still works without this sample */ }
+  }
   // Weather cancellation with refunds.
   const target = departures.find((d: any) => d.tour.slug === 'dolphin-boat' && d.startAt.getTime() - now.getTime() > 5 * 86400000);
   if (target) {
