@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { createChannelBooking } from '../features/keystone/mutations/tour-checkout';
-import { assignGuide, respondToAssignment, generateChannelStatement } from '../features/keystone/mutations/tour-operations';
+import { assignGuide, respondToAssignment, generateChannelStatement, resizeDeparture, closeDeparture } from '../features/keystone/mutations/tour-operations';
 import { transitionGuidePayout, transitionChannelStatement } from '../features/keystone/mutations/tour-settlement';
 const p: any = new PrismaClient(), tag = 'depth-' + randomUUID();
 const key = () => tag + randomUUID();
 async function main() {
-  const role = await p.role.create({data:{name:tag,canManageBookings:true,canManageGuides:true,canManageChannels:true,canManagePayments:true}});
+  const role = await p.role.create({data:{name:tag,canManageBookings:true,canManageGuides:true,canManageChannels:true,canManagePayments:true,canManageDepartures:true}});
   const user = await p.user.create({data:{name:tag,email:tag+'@test.example',password:'disabled-runtime-fixture',roleId:role.id}});
   const c = {prisma:p,session:{itemId:user.id,data:{role}}};
   const tour = await p.tour.create({data:{name:tag,slug:tag,status:'active',maxParticipants:100}});
@@ -54,6 +54,20 @@ async function main() {
   const priced=await createChannelBooking(null,{input:{...input,source:'phone',channelId:undefined},idempotencyKey:key()},c);
   assert.equal((await p.booking.findUnique({where:{bookingRef:priced.bookingRef}})).totalCents,2500);
   console.log('PASS pricing rule snapshot');
+  const sized=await p.departure.create({data:{tourId:tour.id,departureKey:tag+'size',startAt:new Date(Date.now()+9*86400000),endAt:new Date(Date.now()+9*86400000+3600000),capacity:10,status:'on_sale'}});
+  await resizeDeparture(null,{input:{departureId:sized.id,capacity:12},idempotencyKey:key()},c);
+  assert.equal((await p.departure.findUnique({where:{id:sized.id}})).capacity,12);
+  await assert.rejects(()=>resizeDeparture(null,{input:{departureId:sized.id,capacity:101},idempotencyKey:key()},c),/tour maximum/);
+  await assert.rejects(()=>closeDeparture(null,{input:{departureId:sized.id},idempotencyKey:key()},c),/Only an ended/);
+  const ended=await p.departure.create({data:{tourId:tour.id,departureKey:tag+'ended',startAt:new Date(Date.now()-7200000),endAt:new Date(Date.now()-3600000),capacity:10,status:'closed'}});
+  const g2=await p.guide.create({data:{name:tag+'g2',payRateCents:3000,status:'active'}});
+  await p.guideAssignment.create({data:{guideId:g2.id,departureId:ended.id,status:'accepted',payCents:3000}});
+  const closeArgs={input:{departureId:ended.id},idempotencyKey:key()};
+  await closeDeparture(null,closeArgs,c); await closeDeparture(null,closeArgs,c);
+  assert.equal((await p.departure.findUnique({where:{id:ended.id}})).status,'completed');
+  assert.equal(await p.guidePayout.count({where:{guideId:g2.id,status:'draft',totalCents:3000}}),1);
+  await assert.rejects(()=>closeDeparture(null,{input:{departureId:ended.id},idempotencyKey:key()},c),/Only an ended/);
+  console.log('PASS departure resize/complete');
   console.log('PASS booking success/replay/mismatch/card refusal/capacity; guide offer/accept/invalid/overlap; payout state/reference/race/audit; statement invoice/paid/replay/audit; revoked replay permission');
 }
 main().finally(()=>p.$disconnect()).catch(e=>{console.error(e);process.exitCode=1});
