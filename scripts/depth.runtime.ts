@@ -68,6 +68,15 @@ async function main() {
   assert.equal(await p.guidePayout.count({where:{guideId:g2.id,status:'draft',totalCents:3000}}),1);
   await assert.rejects(()=>closeDeparture(null,{input:{departureId:ended.id},idempotencyKey:key()},c),/Only an ended/);
   console.log('PASS departure resize/complete');
+  const certTour=await p.tour.create({data:{name:tag+' cert',slug:tag+'-cert',status:'active',maxParticipants:10,requiredCertifications:['Water Safety']}});
+  const certDep=await p.departure.create({data:{tourId:certTour.id,departureKey:tag+'cert',startAt:new Date(Date.now()+12*86400000),endAt:new Date(Date.now()+12*86400000+3600000),capacity:10,status:'on_sale'}});
+  const lapsed=await p.guide.create({data:{name:tag+'lapsed',payRateCents:1000,status:'active',certifications:{create:[{name:'Water Safety',expiresAt:new Date(Date.now()-86400000)}]}}});
+  await assert.rejects(()=>assignGuide(null,{input:{departureId:certDep.id,guideId:lapsed.id},idempotencyKey:key()},c),/Valid Water Safety certification required/);
+  const valid=await p.guide.create({data:{name:tag+'valid',payRateCents:1000,status:'active',certifications:{create:[{name:'Water Safety',expiresAt:new Date(Date.now()+400*86400000)}]}}});
+  const o2=await assignGuide(null,{input:{departureId:certDep.id,guideId:valid.id},idempotencyKey:key()},c);
+  await p.guideCertification.updateMany({where:{guideId:valid.id},data:{expiresAt:new Date(Date.now()+86400000)}});
+  await assert.rejects(()=>respondToAssignment(null,{input:{assignmentId:o2.id,status:'accepted'},idempotencyKey:key()},c),/Valid Water Safety certification required/);
+  console.log('PASS certification gate at offer and accept');
   console.log('PASS booking success/replay/mismatch/card refusal/capacity; guide offer/accept/invalid/overlap; payout state/reference/race/audit; statement invoice/paid/replay/audit; revoked replay permission');
 }
 main().finally(()=>p.$disconnect()).catch(e=>{console.error(e);process.exitCode=1});

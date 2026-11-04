@@ -1,0 +1,57 @@
+// Removes the depth-* fixtures created by scripts/depth.runtime.ts and the UI click-through. Dry run by default; pass "apply" to delete. DATABASE_URL inline, scratch DB only.
+import { PrismaClient } from '@prisma/client';
+const p: any = new PrismaClient();
+const apply = process.argv[2] === 'apply';
+async function main() {
+  const tours = await p.tour.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const tourIds = tours.map((t: any) => t.id);
+  const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
+  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example'] } }, select: { id: true } });
+  const depIds = deps.map((d: any) => d.id);
+  const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
+  const bIds = bookings.map((b: any) => b.id);
+  const guides = await p.guide.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const gIds = guides.map((g: any) => g.id);
+  const channels = await p.channel.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const cIds = channels.map((c: any) => c.id);
+  const roles = await p.role.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const users = await p.user.findMany({ where: { email: { startsWith: 'depth-' } }, select: { id: true } });
+  const assignments = await p.guideAssignment.findMany({ where: { OR: [{ guideId: { in: gIds } }, { departureId: { in: depIds } }] }, select: { id: true } });
+  const statements = await p.channelStatement.findMany({ where: { channelId: { in: cIds } }, select: { id: true } });
+  const payouts = await p.guidePayout.findMany({ where: { guideId: { in: gIds } }, select: { id: true } });
+  const targetIds = [...bIds, ...assignments.map((a: any) => a.id), ...statements.map((s: any) => s.id), ...payouts.map((s: any) => s.id), ...depIds];
+  console.log({ tours: tourIds.length, deps: depIds.length, bookings: bIds.length, guides: gIds.length, channels: cIds.length, roles: roles.length, users: users.length, assignments: assignments.length, statements: statements.length, payouts: payouts.length });
+  if (!apply) return;
+  await p.$transaction(async (tx: any) => {
+    const parts = await tx.participant.findMany({ where: { bookingId: { in: bIds } }, select: { id: true } });
+    await tx.waiverSignature.deleteMany({ where: { participantId: { in: parts.map((x: any) => x.id) } } });
+    await tx.participant.deleteMany({ where: { bookingId: { in: bIds } } });
+    await tx.bookingLine.deleteMany({ where: { bookingId: { in: bIds } } });
+    const holdIds = (await tx.inventoryHold.findMany({ where: { departureId: { in: depIds } }, select: { id: true } })).map((h: any) => h.id);
+    await tx.promoRedemption.deleteMany({ where: { OR: [{ bookingId: { in: bIds } }, { holdId: { in: holdIds } }] } });
+    const pay = await tx.payment.findMany({ where: { orderId: { in: bIds } }, select: { id: true } });
+    await tx.refund.deleteMany({ where: { paymentId: { in: pay.map((x: any) => x.id) } } });
+    await tx.payment.deleteMany({ where: { orderId: { in: bIds } } });
+    await tx.booking.deleteMany({ where: { id: { in: bIds } } });
+    await tx.inventoryHold.deleteMany({ where: { departureId: { in: depIds } } });
+    await tx.channelStatement.deleteMany({ where: { id: { in: statements.map((s: any) => s.id) } } });
+    await tx.guideAssignment.deleteMany({ where: { id: { in: assignments.map((a: any) => a.id) } } });
+    await tx.guidePayout.deleteMany({ where: { id: { in: payouts.map((x: any) => x.id) } } });
+    await tx.guideCertification.deleteMany({ where: { guideId: { in: gIds } } });
+    await tx.guideAvailability.deleteMany({ where: { guideId: { in: gIds } } });
+    await tx.guide.deleteMany({ where: { id: { in: gIds } } });
+    await tx.resourceAssignment.deleteMany({ where: { departureId: { in: depIds } } });
+    await tx.operationalTask.deleteMany({ where: { departureId: { in: depIds } } });
+    await tx.departure.deleteMany({ where: { id: { in: depIds } } });
+    await tx.pricingRule.deleteMany({ where: { tourId: { in: tourIds } } });
+    await tx.ticketType.deleteMany({ where: { tourId: { in: tourIds } } });
+    await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
+    await tx.channel.deleteMany({ where: { id: { in: cIds } } });
+    await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });
+    await tx.role.deleteMany({ where: { id: { in: roles.map((r: any) => r.id) } } });
+    // Fixture audit trail and idempotency rows go with the fixtures.
+    console.log('audit', (await tx.auditEvent.deleteMany({ where: { targetId: { in: targetIds } } })).count, 'idem', (await tx.idempotencyKey.deleteMany({ where: { idempotencyKey: { contains: 'depth-' } } })).count);
+  }, { timeout: 60000 });
+  console.log('cleaned');
+}
+main().catch(e => { console.error(String(e.message).slice(-400)); process.exitCode = 1; }).finally(() => p.$disconnect());

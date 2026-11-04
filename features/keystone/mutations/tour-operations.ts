@@ -52,7 +52,7 @@ export async function respondToAssignment(_r: any, args: any, context: any) {
     if (i.status === 'accepted') {
       const conflict = await tx.guideAssignment.findFirst({ where: { guideId: a.guideId, id: { not: a.id }, status: { in: ['accepted','worked'] }, departure: { startAt: { lt: a.departure.endAt }, endAt: { gt: a.departure.startAt }, status: { notIn: ['cancelled','weather_cancelled'] } } } });
       if (conflict) throw new Error('Guide has an overlapping assignment');
-      for (const name of a.departure.tour.requiredCertifications as string[] || []) if (!a.guide.certifications.some((c: any) => c.name === name && (!c.expiresAt || c.expiresAt > a.departure.endAt))) throw new Error('Required certification expired');
+      for (const name of a.departure.tour.requiredCertifications as string[] || []) if (!a.guide.certifications.some((c: any) => c.name === name && (!c.expiresAt || c.expiresAt > a.departure.endAt))) throw new Error(`Valid ${name} certification required (expired or missing by the end of this departure)`);
     }
     const result = await tx.guideAssignment.updateMany({ where: { id: a.id, status: 'offered' }, data: { status: i.status } });
     if (result.count !== 1) throw new Error('Assignment changed concurrently');

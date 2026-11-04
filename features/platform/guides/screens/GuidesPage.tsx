@@ -19,7 +19,11 @@ export async function GuidesPage() {
             <div className="flex items-start justify-between gap-2"><h3 className="truncate text-base font-semibold">{g.name}</h3><StatusLabel status={g.status} /></div>
             <p className="text-sm text-muted-foreground">{(g.languages || []).join(', ')} · {money(g.payRateCents)} {g.payRateType === 'hourly' ? 'per hour' : 'per tour'}</p>
             <ul className="mt-2 space-y-1">
-              {g.certifications.map((c: any) => <li key={c.id} className="text-sm">{c.name} <span className={`font-mono ${c.expiresAt && new Date(c.expiresAt).getTime() < soon ? 'text-amber-700' : 'text-muted-foreground'}`}>{c.expiresAt ? `expires ${dayIn(c.expiresAt)}` : 'no expiry'}</span></li>)}
+              {g.certifications.map((c: any) => {
+                const at = c.expiresAt ? new Date(c.expiresAt).getTime() : null
+                const expired = at !== null && at < Date.now(), expiring = at !== null && !expired && at < soon
+                return <li key={c.id} className="text-sm">{c.name} <span className={`font-mono text-xs uppercase tracking-wide ${expired ? 'text-rose-700' : expiring ? 'text-amber-700' : 'text-muted-foreground'}`}>{at === null ? 'no expiry' : `${expired ? 'expired' : expiring ? 'expires soon' : 'valid until'} ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(at))}`}</span></li>
+              })}
             </ul>
             {g.assignments.length > 0 && <ul className="mt-2 space-y-1 border-t pt-2">{g.assignments.map((a: any) => <li key={a.id} className="flex items-center justify-between gap-2 text-sm"><span className="truncate">{a.departure?.tour?.name} · {dayIn(a.departure.startAt)} {timeIn(a.departure.startAt)}</span><StatusLabel status={a.status} /></li>)}</ul>}
           </li>
