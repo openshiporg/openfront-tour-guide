@@ -6,7 +6,7 @@ async function main() {
   const tours = await p.tour.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
-  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example'] } }, select: { id: true } });
+  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example'] } }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
   const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);
@@ -19,7 +19,7 @@ async function main() {
   const assignments = await p.guideAssignment.findMany({ where: { OR: [{ guideId: { in: gIds } }, { departureId: { in: depIds } }] }, select: { id: true } });
   const statements = await p.channelStatement.findMany({ where: { channelId: { in: cIds } }, select: { id: true } });
   const payouts = await p.guidePayout.findMany({ where: { guideId: { in: gIds } }, select: { id: true } });
-  const targetIds = [...bIds, ...bIds.flatMap((id: string) => ['booking_confirmation', 'day_before_reminder'].map(k => `${k}:${id}`)), ...assignments.map((a: any) => a.id), ...statements.map((s: any) => s.id), ...payouts.map((s: any) => s.id), ...depIds];
+  const targetIds = [...bIds, ...bIds.flatMap((id: string) => ['booking_confirmation', 'day_before_reminder', 'weather_cancellation'].map(k => `${k}:${id}`)), ...assignments.map((a: any) => a.id), ...statements.map((s: any) => s.id), ...payouts.map((s: any) => s.id), ...depIds];
   console.log({ tours: tourIds.length, deps: depIds.length, bookings: bIds.length, guides: gIds.length, channels: cIds.length, roles: roles.length, users: users.length, assignments: assignments.length, statements: statements.length, payouts: payouts.length });
   if (!apply) return;
   await p.$transaction(async (tx: any) => {
@@ -55,6 +55,9 @@ async function main() {
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });
     await tx.role.deleteMany({ where: { id: { in: roles.map((r: any) => r.id) } } });
+    // Weather-cancellation fixtures (scripts/weather-cancellation.runtime.ts): refund audit rows, notices of already-deleted bookings, the approval.
+    await tx.auditEvent.deleteMany({ where: { OR: [{ reason: { contains: 'Gale warning' } }, { action: 'departure.weather_cancelled', targetId: { in: depIds } }, { targetList: 'Notification', targetId: { startsWith: 'weather_cancellation:' }, after: { path: ['to'], string_contains: 'depth-' } }] } });
+    await tx.managerApproval.deleteMany({ where: { reason: { contains: 'Gale warning' } } });
     // Fixture audit trail and idempotency rows go with the fixtures.
     console.log('audit', (await tx.auditEvent.deleteMany({ where: { targetId: { in: targetIds } } })).count, 'idem', (await tx.idempotencyKey.deleteMany({ where: { idempotencyKey: { contains: 'depth-' } } })).count);
   }, { timeout: 60000 });

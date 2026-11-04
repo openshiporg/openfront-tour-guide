@@ -16,3 +16,12 @@ test('notificationAfter lowercases the recipient and sets action', () => {
   const r = notificationAfter('booking_confirmation', { bookingRef: 'TG-2', guestEmail: ' Sam@X.CO ' }, { tourName: 'T', startAt: new Date() }, { bookingUpdates: false });
   assert.equal(r.action, 'notification.suppressed'); assert.equal(r.after.to, 'sam@x.co');
 });
+test('weather notice follows weatherCancellation, not bookingUpdates', () => {
+  assert.equal(decideNotification('a@b.co', { bookingUpdates: false, weatherCancellation: true }, 'weather_cancellation').status, 'queued');
+  const d = decideNotification('a@b.co', { bookingUpdates: true, weatherCancellation: false }, 'weather_cancellation');
+  assert.equal(d.status, 'suppressed'); assert.match(d.reason, /weather/);
+});
+test('weather message offers rebook or full refund with the amount', () => {
+  const m = composeNotification('weather_cancellation', { bookingRef: 'TG-9', guestName: 'Sam' }, { tourName: 'Kayak', startAt: '2026-11-05T14:00:00Z', timezone: 'America/New_York', refundCents: 20000 });
+  assert.match(m.text, /rebook/); assert.match(m.text, /\$200\.00/); assert.match(m.subject, /weather/i);
+});

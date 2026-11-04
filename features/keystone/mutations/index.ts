@@ -6,6 +6,7 @@ import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyB
 import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
+import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
 import { guestNotifications } from './tour-notification-queue';
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
@@ -29,6 +30,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input ChannelBookingInput { departureId: ID!, source: String!, channelId: ID, paymentMethod: String, tickets: [TourTicketChoice!]!, addOns: [TourTicketChoice!], promoCode: String, lead: BookingLeadInput!, participants: [BookingParticipantInput!]! }
       input SignWaiverInput { token: String!, signerName: String!, isGuardian: Boolean, minorName: String }
       input RefundBookingInput { bookingId: ID!, amountCents: Int!, reason: String!, approvalId: ID, cancelBooking: Boolean }
+      input WeatherCancelInput { departureId: ID!, reason: String! }
+      input WeatherRebookInput { bookingId: ID!, departureId: ID! }
       input CancelDepartureInput { departureId: ID!, reason: String!, offerCredit: Boolean }
       input RebookInput { token: String!, departureId: ID! }
       input GenerateDeparturesInput { tourId: ID, days: Int }
@@ -54,6 +57,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         tourAvailability(tourId: ID!, from: String!, to: String!): JSON
         lookupBooking(bookingRef: String!, email: String!): JSON
         operatorBookingByKey(idempotencyKey: String!): JSON
+        weatherCancellations: JSON
         guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
       }
       type Mutation {
@@ -72,6 +76,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
+        weatherCancelDeparture(input: WeatherCancelInput!, idempotencyKey: String!): JSON
+        rebookWeatherBooking(input: WeatherRebookInput!, idempotencyKey: String!): JSON
         closeDeparture(input: CloseDepartureInput!, idempotencyKey: String!): JSON
         createChannelBooking(input: ChannelBookingInput!, idempotencyKey: String!): JSON
         refundBooking(input: RefundBookingInput!, idempotencyKey: String!): JSON
@@ -87,12 +93,12 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { operatorBookingByKey, guestNotifications, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { operatorBookingByKey, guestNotifications, weatherCancellations, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow,
         transitionGuidePayout, transitionChannelStatement,
-        cancelDeparture, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
+        cancelDeparture, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },
     },
   });

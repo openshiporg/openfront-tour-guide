@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -20,6 +20,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Guides', href: '/platform/guides', description: 'Roster, certifications, assignments and payouts.', icon: Users, group: 'operations' },
   { title: 'Resources', href: '/platform/resources', description: 'Vans, boats and equipment pools.', icon: Truck, group: 'operations' },
   { title: 'Channels', href: '/platform/channels', description: 'Resellers, allocations and statements.', icon: Handshake, group: 'operations' },
+  { title: 'Weather', href: '/platform/weather', description: 'Weather cancellations: rebook or refund each guest.', icon: CloudRain, group: 'operations' },
   { title: 'Notifications', href: '/platform/notifications', description: 'Queued and held-back guest messages.', icon: Bell, group: 'operations' },
   { title: 'Customers', href: '/platform/customers', description: 'Guests and their bookings.', icon: UserRound, group: 'operations' },
   { title: 'Payment providers', href: '/platform/payment-providers', description: 'Payment gateways and settings.', icon: CreditCard, group: 'settings' },

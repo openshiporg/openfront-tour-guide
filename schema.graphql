@@ -5145,6 +5145,8 @@ type Mutation {
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
   cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
+  weatherCancelDeparture(input: WeatherCancelInput!, idempotencyKey: String!): JSON
+  rebookWeatherBooking(input: WeatherRebookInput!, idempotencyKey: String!): JSON
   closeDeparture(input: CloseDepartureInput!, idempotencyKey: String!): JSON
   createChannelBooking(input: ChannelBookingInput!, idempotencyKey: String!): JSON
   refundBooking(input: RefundBookingInput!, idempotencyKey: String!): JSON
@@ -5325,6 +5327,7 @@ type Query {
   tourAvailability(tourId: ID!, from: String!, to: String!): JSON
   lookupBooking(bookingRef: String!, email: String!): JSON
   operatorBookingByKey(idempotencyKey: String!): JSON
+  weatherCancellations: JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }
 
@@ -5538,6 +5541,16 @@ input RefundBookingInput {
   reason: String!
   approvalId: ID
   cancelBooking: Boolean
+}
+
+input WeatherCancelInput {
+  departureId: ID!
+  reason: String!
+}
+
+input WeatherRebookInput {
+  bookingId: ID!
+  departureId: ID!
 }
 
 input CancelDepartureInput {
