@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy, occupancyNumbers, userFacingError } from '../lib/tour-command';
+import { notificationAfter, notificationRequestId, REMINDER_WINDOW_MS, type NotificationKind } from '../lib/tour-notifications';
 import { fastOperatorBooking } from './tour-operator-booking';
 import { placeHold } from './tour-catalog';
 import { createPayment, getPaymentStatus, refundPayment } from '../utils/paymentProviderAdapter';
@@ -56,6 +57,27 @@ export async function newBooking(tx: any, a: { quote: any; lead: any; participan
   return booking;
 }
 // Converts a held reservation into confirmed seats. Caller holds departure:<id> lock.
+
+// Queue (or record the suppression of) one guest notification, once per booking and kind. No transport is called.
+export async function queueGuestNotification(tx: any, kind: NotificationKind, booking: any, trip: any, actorId: string | null) {
+  const targetId = `${kind}:${booking.id}`;
+  if (await tx.auditEvent.findFirst({ where: { targetList: 'Notification', targetId }, select: { id: true } })) return null;
+  const email = String(booking.guestEmail || '').trim().toLowerCase();
+  const pref = email ? await tx.notificationPreference.findUnique({ where: { email } }) : null;
+  const n = notificationAfter(kind, booking, trip, pref);
+  await audit(tx, actorId, n.action, 'Notification', targetId, null, n.after, n.reason, notificationRequestId(kind, booking.id));
+  return n.action;
+}
+// Day-before reminders: confirmed bookings on departures starting inside the window, once each. departureIds narrows it (tests).
+export async function queueDayBeforeReminders(tx: any, actorId: string | null, departureIds?: string[]) {
+  let reminders = 0, suppressedReminders = 0;
+  const soon = await tx.departure.findMany({ where: { ...(departureIds ? { id: { in: departureIds } } : {}), status: { in: ['on_sale', 'min_not_met', 'confirmed', 'full'] }, startAt: { gt: new Date(), lt: new Date(Date.now() + REMINDER_WINDOW_MS) } }, include: { tour: true, bookings: { where: { status: 'confirmed' } } } });
+  for (const d of soon) for (const b of d.bookings) {
+    const r = await queueGuestNotification(tx, 'day_before_reminder', b, { tourName: d.tour.name, startAt: d.startAt, timezone: d.tour.timezone, meetingPoint: b.tourSnapshot?.meetingPoint }, actorId);
+    if (r === 'notification.queued') reminders++; else if (r) suppressedReminders++;
+  }
+  return { reminders, suppressedReminders };
+}
 export async function confirmBooking(tx: any, bookingId: string, actorId: string | null, requestId: string) {
   const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { hold: true } });
   if (booking.status === 'confirmed') return booking;
@@ -73,6 +95,8 @@ export async function confirmBooking(tx: any, bookingId: string, actorId: string
   }
   await refreshDepartureStatus(tx, booking.departureId);
   await audit(tx, actorId, 'booking.confirmed', 'Booking', booking.id, { status: booking.status }, { status: 'confirmed', seats }, '', requestId);
+  const snap = booking.tourSnapshot || {};
+  await queueGuestNotification(tx, 'booking_confirmation', booking, { tourName: snap.name || 'your tour', startAt: snap.startAt, timezone: snap.timezone, meetingPoint: snap.meetingPoint }, actorId);
   return tx.booking.findUnique({ where: { id: booking.id } });
 }
 async function waiverLinks(prisma: any, bookingId: string) {
@@ -378,8 +402,9 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
       }
       if (d.startAt.getTime() - d.bookingCutoffMinutes * 60000 <= Date.now()) { await tx.departure.update({ where: { id: d.id }, data: { status: 'closed' } }); closed++; }
     }
-    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed });
-    return { tasks, closed };
+    const { reminders, suppressedReminders } = await queueDayBeforeReminders(tx, user.id);
+    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders });
+    return { tasks, closed, reminders, suppressedReminders };
   });
 }
 

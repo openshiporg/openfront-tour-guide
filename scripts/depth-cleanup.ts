@@ -19,7 +19,7 @@ async function main() {
   const assignments = await p.guideAssignment.findMany({ where: { OR: [{ guideId: { in: gIds } }, { departureId: { in: depIds } }] }, select: { id: true } });
   const statements = await p.channelStatement.findMany({ where: { channelId: { in: cIds } }, select: { id: true } });
   const payouts = await p.guidePayout.findMany({ where: { guideId: { in: gIds } }, select: { id: true } });
-  const targetIds = [...bIds, ...assignments.map((a: any) => a.id), ...statements.map((s: any) => s.id), ...payouts.map((s: any) => s.id), ...depIds];
+  const targetIds = [...bIds, ...bIds.flatMap((id: string) => ['booking_confirmation', 'day_before_reminder'].map(k => `${k}:${id}`)), ...assignments.map((a: any) => a.id), ...statements.map((s: any) => s.id), ...payouts.map((s: any) => s.id), ...depIds];
   console.log({ tours: tourIds.length, deps: depIds.length, bookings: bIds.length, guides: gIds.length, channels: cIds.length, roles: roles.length, users: users.length, assignments: assignments.length, statements: statements.length, payouts: payouts.length });
   if (!apply) return;
   await p.$transaction(async (tx: any) => {
@@ -50,6 +50,7 @@ async function main() {
     await tx.promoCode.deleteMany({ where: { id: { in: promos.map((x: any) => x.id) } } });
     await tx.addOn.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
+    await tx.notificationPreference.deleteMany({ where: { email: { startsWith: 'depth-' } } });
     await tx.resource.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });

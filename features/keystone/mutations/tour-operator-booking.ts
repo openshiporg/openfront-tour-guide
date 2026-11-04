@@ -1,3 +1,4 @@
+import { notificationAfter, notificationRequestId } from '../lib/tour-notifications';
 import { randomBytes } from 'node:crypto';
 import { command, hashToken, humanCode, derivedToken, occupancyNumbers } from '../lib/tour-command';
 import { applyPricingRules } from '../lib/tour-pricing';
@@ -17,7 +18,8 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
   const tour = departure.tour;
   const wantedAddOns = i.addOns || [];
   if (wantedAddOns.length > 20) throw new Error('Too many add-ons');
-  const [pricingRules, settings, policy, meetingPoint, channel, addOnRows, promoRow] = await Promise.all([
+  const leadEmail = String(i.lead?.email || '').trim().toLowerCase();
+  const [pricingRules, settings, policy, meetingPoint, channel, addOnRows, promoRow, notifyPref] = await Promise.all([
     db.pricingRule.findMany({ where: { tourId: tour.id } }),
     db.storeSettings.findFirst(),
     tour.cancellationPolicyId ? db.cancellationPolicy.findUnique({ where: { id: tour.cancellationPolicyId } }) : null,
@@ -25,6 +27,7 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
     i.source === 'reseller' ? db.channel.findUnique({ where: { id: i.channelId } }) : null,
     wantedAddOns.length ? db.addOn.findMany({ where: { tourId: tour.id, id: { in: wantedAddOns.map((a: any) => String(a.id)) } } }) : [],
     i.promoCode ? db.promoCode.findUnique({ where: { code: String(i.promoCode).trim().toUpperCase() }, include: { tours: { select: { id: true } } } }) : null,
+    leadEmail ? db.notificationPreference.findUnique({ where: { email: leadEmail } }) : null,
   ]);
   if (i.promoCode) {
     const now = new Date();
@@ -84,6 +87,8 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
     if (!guestName || !guestEmail.includes('@')) throw new Error('Lead booker name and email required');
 
     const holdId = newId(), bookingId = newId(), bookingRef = `TG-${humanCode(8)}`;
+    // Queued (or recorded as suppressed by the guest's preference) in the same statement as the booking; no transport.
+    const note = notificationAfter('booking_confirmation', { bookingRef, guestName, guestEmail }, { tourName: tour.name, startAt: d.startAt, timezone: tour.timezone, meetingPoint }, notifyPref);
     const commission = channel ? basisPoints(quote.totalCents, channel.commissionBps) : 0;
     const waiver = Boolean(quote.tour.waiverTemplateId);
     const pay = quote.totalCents > 0 && !(channel && channel.paymentModel === 'channel_collects');
@@ -116,7 +121,8 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
       dep AS (UPDATE "Departure" SET status = ${nextStatus}::"DepartureStatusType", "updatedAt" = now() WHERE id = ${d.id} AND status::text <> ${nextStatus})
       INSERT INTO "AuditEvent" (id, actor, action, "targetList", "targetId", before, after, reason, "requestId", "updatedAt") VALUES
         (${newId()}, ${user.id}, 'hold.created', 'InventoryHold', ${holdId}, NULL, ${JSON.stringify({ seats, departureId: d.id })}::jsonb, '', ${args.idempotencyKey}, now()),
-        (${newId()}, ${user.id}, 'booking.confirmed', 'Booking', ${bookingId}, ${JSON.stringify({ status: 'pending_payment' })}::jsonb, ${JSON.stringify({ status: 'confirmed', seats })}::jsonb, '', ${args.idempotencyKey}, now())`;
+        (${newId()}, ${user.id}, 'booking.confirmed', 'Booking', ${bookingId}, ${JSON.stringify({ status: 'pending_payment' })}::jsonb, ${JSON.stringify({ status: 'confirmed', seats })}::jsonb, '', ${args.idempotencyKey}, now()),
+        (${newId()}, ${user.id}, ${note.action}, 'Notification', ${'booking_confirmation:' + bookingId}, NULL, ${JSON.stringify(note.after)}::jsonb, ${note.reason}, ${notificationRequestId('booking_confirmation', bookingId)}, now())`;
     return { bookingRef, waivers: [] };
   });
 }
