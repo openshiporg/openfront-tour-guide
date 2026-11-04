@@ -39,7 +39,7 @@ async function main() {
   await assert.rejects(() => salesReport(null, { from: day, to: '2020-01-01' }, c), /before the start/);
   await assert.rejects(() => salesReport(null, { from: '2020-01-01', to: day }, c), /400 days/);
   // 3. Report vs an independent query of the fixture bookings (the scratch DB also holds seed bookings made today, so compare by fixture refs).
-  const rep = await salesReport(null, input, c);
+  const rep: any = await salesReport(null, input, c);
   const mine = await p.booking.findMany({ where: { bookingRef: { in: [b1, b2, b3, b4].map(b => b.bookingRef) } } });
   const sum = (k: string) => mine.reduce((n: number, b: any) => n + b[k], 0);
   assert.equal(sum('totalCents'), 2 * 4000 + 4000 + 3 * 2500 + 2 * 2500); assert.equal(sum('refundedCents'), 2000); assert.equal(mine.find((b: any) => b.bookingRef === b1.bookingRef).refundedCents, 2000);
@@ -70,9 +70,9 @@ async function main() {
   const ev = await p.auditEvent.findFirst({ where: { action: 'report.sales_exported' }, orderBy: { createdAt: 'desc' } }); assert.equal(ev.actorId, user.id); assert.equal(ev.after.rows, ex.rows);
   // 6. Departure basis counts the same bookings by departure day (4 days out).
   const fut = local(Date.now() + 4 * 86400000);
-  const dep = await salesReport(null, { from: fut, to: fut, basis: 'departure' }, c);
+  const dep: any = await salesReport(null, { from: fut, to: fut, basis: "departure" }, c);
   assert.ok(dep.byTour.some((g: any) => g.name === tag + ' Alpha') && dep.byTour.some((g: any) => g.name === '=' + tag + ' Beta'));
-  assert.equal((await salesReport(null, { from: '2030-01-01', to: '2030-01-02' }, c)).totals.bookings, 0);
+  assert.equal(((await salesReport(null, { from: "2030-01-01", to: "2030-01-02" }, c)) as any).totals.bookings, 0);
   await p.booking.delete({ where: { id: pend.id } }).catch(() => {});
   console.log('PASS sales report and CSV: totals, commission, refunds, exclusions, formula safety, audit, permission');
   await p.$disconnect();
