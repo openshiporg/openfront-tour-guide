@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { createChannelBooking, refundBooking } from '../features/keystone/mutations/tour-checkout';
+import { weekStart } from '../features/keystone/lib/tour-reports';
 import { salesReport, exportSalesCsv } from '../features/keystone/mutations/tour-reports';
 const p: any = new PrismaClient(), tag = 'depth-' + randomUUID().slice(0, 8);
 const key = () => tag + randomUUID();
@@ -30,6 +31,11 @@ async function main() {
   const tz = (await p.storeSettings.findFirst({ select: { timezone: true } }))?.timezone || 'America/New_York';
   const local = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms));
   const day = local(Date.now());
+  // Fixtures for the new figures: a paid booking later refunded in full and cancelled (counts, cancelled), an unpaid cancelled booking and a rebooked original (excluded).
+  const b5 = await book(A, 2, 'phone');
+  await refundBooking(null, { input: { bookingId: (await p.booking.findUnique({ where: { bookingRef: b5.bookingRef } })).id, amountCents: 8000, reason: 'Guest cancelled', cancelBooking: true }, idempotencyKey: key() }, c);
+  const neverPaid = await p.booking.create({ data: { bookingRef: 'TG-' + tag.slice(-8).toUpperCase() + 'N', departureId: A.d.id, guestName: 'NeverPaid', status: 'cancelled', source: 'online', totalCents: 5555, seats: 0 } });
+  const moved = await p.booking.create({ data: { bookingRef: 'TG-' + tag.slice(-8).toUpperCase() + 'M', departureId: A.d.id, guestName: 'Moved', status: 'cancelled', source: 'phone', totalCents: 4444, seats: 0, creditUsedAt: new Date() } });
   const input = { from: day, to: day, basis: 'booked' };
   // 1. Permission: booking staff without canReadPayments cannot read or export money.
   await assert.rejects(() => salesReport(null, input, cw), /Not authorized/);
@@ -44,15 +50,31 @@ async function main() {
   const sum = (k: string) => mine.reduce((n: number, b: any) => n + b[k], 0);
   assert.equal(sum('totalCents'), 2 * 4000 + 4000 + 3 * 2500 + 2 * 2500); assert.equal(sum('refundedCents'), 2000); assert.equal(mine.find((b: any) => b.bookingRef === b1.bookingRef).refundedCents, 2000);
   const alpha = rep.byTour.find((g: any) => g.name === tag + ' Alpha'), beta = rep.byTour.find((g: any) => g.name === '=' + tag + ' Beta');
-  assert.deepEqual([alpha.bookings, alpha.guests, alpha.grossCents, alpha.refundedCents, alpha.netCents, alpha.commissionCents], [2, 3, 12000, 2000, 10000, 0]);
+  assert.deepEqual([alpha.bookings, alpha.guests, alpha.grossCents, alpha.refundedCents, alpha.netCents, alpha.commissionCents], [3, 3, 20000, 10000, 10000, 0]);
   assert.deepEqual([beta.bookings, beta.guests, beta.grossCents, beta.refundedCents, beta.netCents], [2, 5, 12500, 0, 12500]);
   // commission: 15% of 7500 + 15% of 5000 (channel-collected bookings carry no captured payment here, so they cannot be refunded in-app; the refund-reduces-commission rule is unit-tested)
   assert.equal(beta.commissionCents, 1125 + 750);
   const chg = rep.byChannel.find((g: any) => g.name === ch.name); assert.equal(chg.commissionCents, 1875); assert.equal(chg.bookings, 2);
   assert.equal(rep.bySource.find((g: any) => g.name === 'phone').bookings >= 1, true);
+  // 3b. Cancellation: Alpha sold 3 bookings (phone, walk-up, the refunded one); exactly one was cancelled. Never-paid and rebooked originals are not in the report.
+  assert.deepEqual([alpha.cancelled, beta.cancelled], [1, 0]);
+  assert.ok(!JSON.stringify(rep).includes('NeverPaid') && !JSON.stringify(rep).includes('Moved'));
+  assert.equal(rep.totals.cancellationBps, Math.round(rep.totals.cancelled * 10000 / rep.totals.bookings));
+  // 3c. Weekly trend: weeks from the range start, bookings and net sum to the totals, and the current week holds today's fixtures.
+  assert.equal(rep.trend[0].week, weekStart(day)); assert.equal(rep.trend.length, 1);
+  assert.equal(rep.trend.reduce((n: number, w: any) => n + w.bookings, 0), rep.totals.bookings); assert.equal(rep.trend.reduce((n: number, w: any) => n + w.netCents, 0), rep.totals.netCents);
+  const wide: any = await salesReport(null, { from: local(Date.now() - 20 * 86400000), to: day, basis: 'booked' }, c);
+  assert.ok(wide.trend.length >= 3 && wide.trend.length <= 4); assert.equal(wide.trend.reduce((n: number, w: any) => n + w.netCents, 0), wide.totals.netCents);
+  // 3d. Occupancy: seats sold against capacity for the departures starting in the range, same live-booking rule as Today.
+  const futDay = local(Date.now() + 4 * 86400000);
+  const occ: any = (await salesReport(null, { from: futDay, to: futDay, basis: 'departure' }, c)).occupancy;
+  const oa = occ.byTour.find((t: any) => t.name === tag + ' Alpha'), ob = occ.byTour.find((t: any) => t.name === '=' + tag + ' Beta');
+  assert.deepEqual([oa.departures, oa.capacity, oa.seats, oa.bps], [1, 40, 3, 750]); assert.deepEqual([ob.capacity, ob.seats, ob.bps], [40, 5, 1250]);
+  assert.equal(occ.byTour.reduce((n: number, t: any) => n + t.seats, 0), occ.total.seats); assert.equal(occ.byTour.reduce((n: number, t: any) => n + t.capacity, 0), occ.total.capacity);
+  assert.ok(occ.departures.some((d: any) => d.tour === tag + ' Alpha' && d.seats === 3 && d.capacity === 40));
   // 4. Pending is excluded; groupings all sum to the totals.
-  assert.ok(!JSON.stringify(rep).includes('Pending')); assert.equal(rep.totals.grossCents >= 24500, true);
-  for (const g of [rep.byTour, rep.byChannel, rep.bySource]) for (const k of ['bookings', 'guests', 'grossCents', 'discountCents', 'refundedCents', 'netCents', 'commissionCents']) assert.equal(g.reduce((n: number, x: any) => n + x[k], 0), rep.totals[k], k);
+  assert.ok(!JSON.stringify(rep).includes('Pending')); assert.equal(rep.totals.grossCents >= 32500, true);
+  for (const g of [rep.byTour, rep.byChannel, rep.bySource]) for (const k of ['bookings', 'cancelled', 'guests', 'grossCents', 'discountCents', 'refundedCents', 'netCents', 'commissionCents']) assert.equal(g.reduce((n: number, x: any) => n + x[k], 0), rep.totals[k], k);
   // 5. CSV: sums to the page totals, formula-safe, audited.
   const before = await p.auditEvent.count({ where: { action: 'report.sales_exported' } });
   const ex = await exportSalesCsv(null, { input }, c);
@@ -66,6 +88,8 @@ async function main() {
   for (const [i, k] of [[8, 'grossCents'], [9, 'discountCents'], [10, 'refundedCents'], [11, 'netCents'], [12, 'commissionCents']] as const) { assert.equal(rows.reduce((n, r) => n + cents(r[i]), 0), cents(tot[i])); assert.equal(cents(tot[i]), rep.totals[k], k); }
   assert.equal(rows.reduce((n, r) => n + Number(r[7]), 0), rep.totals.guests);
   for (const r of rows) for (const cell of r.slice(0, 7)) assert.ok(!/^[=+\-@\t]/.test(cell), 'unsafe cell ' + cell);
+  assert.ok(lines.at(-1)!.includes(`${rep.totals.bookings} bookings; ${rep.totals.cancelled} cancelled`));
+  assert.equal(lines.slice(1, -1).filter((l: string) => /,(cancelled|refunded),/.test(l)).length >= rep.totals.cancelled, true, 'cancelled and refunded rows are in the CSV');
   assert.equal(await p.auditEvent.count({ where: { action: 'report.sales_exported' } }), before + 1);
   const ev = await p.auditEvent.findFirst({ where: { action: 'report.sales_exported' }, orderBy: { createdAt: 'desc' } }); assert.equal(ev.actorId, user.id); assert.equal(ev.after.rows, ex.rows);
   // 6. Departure basis counts the same bookings by departure day (4 days out).
