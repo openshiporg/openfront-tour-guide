@@ -2,15 +2,18 @@ import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, money, timeIn } from '../../lib/format'
 import { getGuides } from '../actions/guides'
+import { getBookingOptions } from '../../bookings/actions/bookings'
+import { GuideAssignments } from '../components/GuideAssignments'
 
 export async function GuidesPage() {
-  const guides = await getGuides()
+  const [guides, { departures }] = await Promise.all([getGuides(), getBookingOptions()])
   const soon = Date.now() + 30 * 86400000
   return (
     <PageContainer title="Guides" breadcrumbs={[{ type: 'link', label: 'Dashboard', href: '/dashboard' }, { type: 'page', label: 'Guides' }]}>
-      <ul className="grid gap-3 p-4 md:grid-cols-2">
+      <GuideAssignments guides={guides} departures={departures} />
+      <ul className="grid min-w-0 grid-cols-1 gap-3 p-4 md:grid-cols-2">
         {guides.map((g) => (
-          <li key={g.id} className="rounded-xl border p-4">
+          <li key={g.id} className="min-w-0 rounded-xl border p-4">
             <div className="flex items-start justify-between gap-2"><h3 className="truncate text-base font-semibold">{g.name}</h3><StatusLabel status={g.status} /></div>
             <p className="text-sm text-muted-foreground">{(g.languages || []).join(', ')} · {money(g.payRateCents)} {g.payRateType === 'hourly' ? 'per hour' : 'per tour'}</p>
             <ul className="mt-2 space-y-1">
