@@ -6,7 +6,7 @@ async function main() {
   const tours = await p.tour.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
-  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example'] } }, select: { id: true } });
+  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example'] } }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
   const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);

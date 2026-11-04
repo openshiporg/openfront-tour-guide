@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { GraphQLError } from 'graphql';
 import { permissions, type Permission } from '../access';
 import { getOrCreateIdempotencyAttempt, updateIdempotencyAttempt } from '../utils/idempotency';
 export const opaqueToken = () => randomBytes(32).toString('base64url');
@@ -27,6 +28,16 @@ export async function audit(tx: any, actorId: string | null, action: string, tar
 export async function command(context: any, key: string, operation: string, params: any, locks: string[], work: (tx: any) => Promise<any>) {
   if (!key || key.length > 200) throw new Error('Idempotency key required (maximum 200 characters)');
   const scopedKey = `${operation}:${key}`;
+  try {
+    return await runCommand(context, operation, scopedKey, params, locks, work);
+  } catch (error: any) {
+    // Domain refusals ("Guide is unavailable", "Valid Water Safety certification required") are written for the operator;
+    // surface them with a user-facing code. Driver/Prisma failures keep the generic message.
+    if (error instanceof GraphQLError || /^Prisma/.test(error?.name || '') || !(error instanceof Error)) throw error;
+    throw new GraphQLError(error.message, { extensions: { code: 'KS_USER_INPUT_ERROR' }, originalError: error });
+  }
+}
+async function runCommand(context: any, operation: string, scopedKey: string, params: any, locks: string[], work: (tx: any) => Promise<any>) {
   return context.prisma.$transaction(async (tx: any) => {
     for (const lock of [...new Set([`idempotency:${scopedKey}`, ...locks])].sort()) await lockTransactionKey(tx, lock);
     const { attempt, replay } = await getOrCreateIdempotencyAttempt(tx, { key: scopedKey, requestPath: operation, requestParams: { ...params, actorId: context.session?.itemId || null } });

@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { platformMutation, platformQuery } from '../../lib/gql'
 
 export async function getBookingOptions() {
-  return await platformQuery<{ departures: any[]; channels: any[] }>(`query($now:DateTime!){ departures(where:{startAt:{gt:$now},status:{in:[on_sale,confirmed,min_not_met]}},take:200,orderBy:[{startAt:asc}]){ id startAt tour{ name ticketTypes(where:{active:{equals:true}},take:30){ id name priceCents } } } channels(where:{active:{equals:true}},take:100){id name paymentModel} }`, { now: new Date().toISOString() }) || { departures: [], channels: [] }
+  // Departures and tours are fetched separately and joined here: nesting tour{ticketTypes} under ~150
+  // departures makes Keystone issue a query per row (10s+), which hits the internal GraphQL timeout.
+  const data = await platformQuery<{ departures: any[]; tours: any[]; channels: any[] }>(`query($now:DateTime!){ departures(where:{startAt:{gt:$now},status:{in:[on_sale,confirmed,min_not_met]}},take:200,orderBy:[{startAt:asc}]){ id startAt tour{ id } } tours(where:{status:{equals:active}},take:100){ id name ticketTypes(where:{active:{equals:true}},take:30){ id name priceCents } } channels(where:{active:{equals:true}},take:100){id name paymentModel} }`, { now: new Date().toISOString() })
+  if (!data) return { departures: [], channels: [] }
+  const tours = new Map(data.tours.map((t) => [t.id, t]))
+  return { departures: data.departures.filter((d) => tours.has(d.tour?.id)).map((d) => ({ id: d.id, startAt: d.startAt, tour: tours.get(d.tour?.id) })), channels: data.channels }
 }
 export async function createOperatorBooking(input: Record<string, unknown>) {
   const result = await platformMutation(`mutation($input:ChannelBookingInput!,$idempotencyKey:String!){createChannelBooking(input:$input,idempotencyKey:$idempotencyKey)}`, { input })
