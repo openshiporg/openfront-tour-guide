@@ -45,6 +45,10 @@ async function main() {
     await tx.departure.deleteMany({ where: { id: { in: depIds } } });
     await tx.pricingRule.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.ticketType.deleteMany({ where: { tourId: { in: tourIds } } });
+    const promos = await tx.promoCode.findMany({ where: { code: { startsWith: 'DEPTHPROMO' } }, select: { id: true } });
+    await tx.promoRedemption.deleteMany({ where: { promoCodeId: { in: promos.map((x: any) => x.id) } } });
+    await tx.promoCode.deleteMany({ where: { id: { in: promos.map((x: any) => x.id) } } });
+    await tx.addOn.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });

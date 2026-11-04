@@ -15,16 +15,24 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
   const departure = await db.departure.findUnique({ where: { id: i.departureId }, include: { tour: { include: { ticketTypes: true } } } });
   if (!departure) throw new Error('Departure not found');
   const tour = departure.tour;
-  const [pricingRules, settings, policy, meetingPoint, channel] = await Promise.all([
+  const wantedAddOns = i.addOns || [];
+  if (wantedAddOns.length > 20) throw new Error('Too many add-ons');
+  const [pricingRules, settings, policy, meetingPoint, channel, addOnRows, promoRow] = await Promise.all([
     db.pricingRule.findMany({ where: { tourId: tour.id } }),
     db.storeSettings.findFirst(),
     tour.cancellationPolicyId ? db.cancellationPolicy.findUnique({ where: { id: tour.cancellationPolicyId } }) : null,
     tour.meetingPointId ? db.meetingPoint.findUnique({ where: { id: tour.meetingPointId }, select: { name: true, address: true, instructions: true, mapLink: true } }) : null,
     i.source === 'reseller' ? db.channel.findUnique({ where: { id: i.channelId } }) : null,
+    wantedAddOns.length ? db.addOn.findMany({ where: { tourId: tour.id, id: { in: wantedAddOns.map((a: any) => String(a.id)) } } }) : [],
+    i.promoCode ? db.promoCode.findUnique({ where: { code: String(i.promoCode).trim().toUpperCase() }, include: { tours: { select: { id: true } } } }) : null,
   ]);
+  if (i.promoCode) {
+    const now = new Date();
+    if (!promoRow || promoRow.status !== 'active' || (promoRow.startsAt && promoRow.startsAt > now) || (promoRow.endsAt && promoRow.endsAt < now) || (promoRow.tours.length && !promoRow.tours.some((t: any) => t.id === tour.id))) throw new Error('Promo code is not valid');
+  }
   if (i.source === 'reseller' && !channel?.active) throw new Error('Channel unavailable');
 
-  return command(context, args.idempotencyKey, 'createChannelBooking', i, [`departure:${departure.id}`], async (tx: any) => {
+  return command(context, args.idempotencyKey, 'createChannelBooking', i, [`departure:${departure.id}`, ...(promoRow ? [`promo:${promoRow.id}`] : [])], async (tx: any) => {
     const d = departure;
     // Current state under the lock: status, capacity, expired holds and occupancy, in one statement.
     const occ = await occupancyNumbers(tx, d.id, d.startAt, undefined, channel?.id);
@@ -49,7 +57,26 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
     }
     if (!seats || seats > Math.max(0, state.capacity - occ.booked - occ.held - occ.allocated)) throw new Error('Not enough seats');
 
-    const quote: any = { lines, ...quoteTotal(lines, settings?.taxBps || 0, 0), promo: null, seats, currencyCode: settings?.currencyCode || 'USD',
+    for (const chosen of wantedAddOns) {
+      const addOn = addOnRows.find((a: any) => a.id === chosen.id);
+      if (!addOn || !Number.isSafeInteger(chosen.qty) || chosen.qty < 1 || chosen.qty > 100) throw new Error('Invalid add-on');
+      if (addOn.inventory !== null) {
+        const booked = await tx.bookingLine.aggregate({ where: { catalogId: addOn.id, booking: { departureId: d.id, status: { in: ['confirmed', 'checked_in', 'completed', 'partially_refunded'] } } }, _sum: { qty: true } });
+        const holds = await tx.inventoryHold.findMany({ where: { departureId: d.id, status: 'active', expiresAt: { gt: new Date() } }, select: { quote: true } });
+        const held = holds.reduce((n: number, h: any) => n + (h.quote?.lines || []).filter((l: any) => l.catalogId === addOn.id).reduce((a: number, l: any) => a + l.qty, 0), 0);
+        if (chosen.qty + held + (booked._sum.qty || 0) > addOn.inventory) throw new Error('Add-on unavailable');
+      }
+      lines.push({ catalogId: addOn.id, name: addOn.name, unitPriceCents: addOn.priceCents, qty: chosen.qty, seatsUsed: 0, kind: 'addon' });
+    }
+    let discountCents = 0;
+    if (promoRow) {
+      const used = await tx.promoRedemption.count({ where: { promoCodeId: promoRow.id, status: { in: ['reserved', 'committed'] } } });
+      if (promoRow.maxUses !== null && used >= promoRow.maxUses) throw new Error('Promo code is fully used');
+      const base = lines.reduce((n: number, l: any) => n + l.unitPriceCents * l.qty, 0);
+      discountCents = promoRow.discountType === 'comp' ? base : promoRow.discountType === 'percent_bps' ? basisPoints(base, promoRow.value) : Math.min(base, promoRow.value);
+    }
+    const promo = promoRow ? { id: promoRow.id, code: promoRow.code, discountType: promoRow.discountType, value: promoRow.value } : null;
+    const quote: any = { lines, ...quoteTotal(lines, settings?.taxBps || 0, discountCents), promo, seats, currencyCode: settings?.currencyCode || 'USD',
       tour: { id: tour.id, name: tour.name, timezone: tour.timezone, startAt: d.startAt, endAt: d.endAt, meetingPointId: tour.meetingPointId, waiverTemplateId: tour.requiresWaiverId, meetingPoint },
       policy: { rules: policy?.rules || [], weatherFullRefund: policy?.weatherFullRefund ?? true }, departureId: d.id };
     const participants = buildParticipants(quote, i.participants);
@@ -74,7 +101,7 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
           "channelCommissionCents", "currencyCode", seats, "policySnapshot", "tourSnapshot", hold, "specialRequests", "pickupLocation", "updatedAt")
         VALUES (${bookingId}, ${bookingRef}, ${d.id}, ${guestName}, ${guestEmail}, ${String(i.lead.phone || '')}, 'confirmed'::"BookingStatusType", ${channel?.id ?? null}, ${i.source}::"BookingSourceType",
           ${quote.subtotalCents}, ${quote.addOnsCents}, ${quote.discountCents}, ${quote.taxCents}, ${quote.totalCents}, ${commission}, ${quote.currencyCode}, ${seats},
-          ${JSON.stringify(quote.policy)}::jsonb, ${JSON.stringify({ ...quote.tour, promo: null })}::jsonb, ${holdId}, ${String(i.lead.specialRequests || '')}, ${String(i.lead.pickupLocation || '')}, now())),
+          ${JSON.stringify(quote.policy)}::jsonb, ${JSON.stringify({ ...quote.tour, promo })}::jsonb, ${holdId}, ${String(i.lead.specialRequests || '')}, ${String(i.lead.pickupLocation || '')}, now())),
       l AS (INSERT INTO "BookingLine" (id, booking, name, "unitPriceCents", qty, "seatsUsed", kind, "totalCents", "currencyCode", "catalogId", "updatedAt")
         SELECT x.id, ${bookingId}, x.name, x.unit, x.qty, x."seatsUsed", x.kind::"BookingLineKindType", x.total, ${quote.currencyCode}, x."catalogId", now()
         FROM jsonb_to_recordset(${JSON.stringify(lineRows)}::jsonb) AS x(id text, name text, unit int, qty int, "seatsUsed" int, kind text, total int, "catalogId" text)),
@@ -83,6 +110,9 @@ export async function fastOperatorBooking(context: any, args: any, user: any) {
         FROM jsonb_to_recordset(${JSON.stringify(people)}::jsonb) AS x(id text, "fullName" text, age int, email text, dietary text, "medicalNotes" text, snapshot jsonb, token text)),
       pay AS (INSERT INTO "Payment" (id, "idempotencyKey", amount, "currencyCode", status, "paymentMethod", "order", "processedAt", "processedBy", notes, "updatedAt")
         SELECT ${newId()}, ${'tour-payment:' + bookingId}, ${quote.totalCents}, ${quote.currencyCode}, 'succeeded', 'cash', ${bookingId}, now(), ${user.id}, 'Collected by operator', now() WHERE ${pay}),
+      red AS (INSERT INTO "PromoRedemption" (id, "promoCode", booking, "holdId", "amountCents", "currencyCode", status, "updatedAt")
+        SELECT ${newId()}, ${promo?.id ?? ''}, ${bookingId}, ${holdId}, ${discountCents}, ${quote.currencyCode}, 'committed'::"PromoRedemptionStatusType", now() WHERE ${Boolean(promo)}),
+      use AS (UPDATE "PromoCode" SET "usedCount" = COALESCE("usedCount", 0) + 1, "updatedAt" = now() WHERE id = ${promo?.id ?? ''}),
       dep AS (UPDATE "Departure" SET status = ${nextStatus}::"DepartureStatusType", "updatedAt" = now() WHERE id = ${d.id} AND status::text <> ${nextStatus})
       INSERT INTO "AuditEvent" (id, actor, action, "targetList", "targetId", before, after, reason, "requestId", "updatedAt") VALUES
         (${newId()}, ${user.id}, 'hold.created', 'InventoryHold', ${holdId}, NULL, ${JSON.stringify({ seats, departureId: d.id })}::jsonb, '', ${args.idempotencyKey}, now()),
