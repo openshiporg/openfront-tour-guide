@@ -5325,6 +5325,7 @@ type Query {
   tourAvailability(tourId: ID!, from: String!, to: String!): JSON
   lookupBooking(bookingRef: String!, email: String!): JSON
   operatorBookingByKey(idempotencyKey: String!): JSON
+  guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }
 
 union AuthenticatedItem = User
