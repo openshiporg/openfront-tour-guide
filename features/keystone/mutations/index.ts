@@ -6,6 +6,7 @@ import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyB
 import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
+import { salesReport, exportSalesCsv } from './tour-reports';
 import { participantWaiver, captureWaiverOnSite } from './tour-waiver-capture';
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
 import { guestNotifications } from './tour-notification-queue';
@@ -31,6 +32,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input ChannelBookingInput { departureId: ID!, source: String!, channelId: ID, paymentMethod: String, tickets: [TourTicketChoice!]!, addOns: [TourTicketChoice!], promoCode: String, lead: BookingLeadInput!, participants: [BookingParticipantInput!]! }
       input SignWaiverInput { token: String!, signerName: String!, isGuardian: Boolean, minorName: String }
       input RefundBookingInput { bookingId: ID!, amountCents: Int!, reason: String!, approvalId: ID, cancelBooking: Boolean }
+      input SalesReportInput { from: String!, to: String!, basis: String }
       input CaptureWaiverInput { participantId: ID!, signerName: String!, isGuardian: Boolean }
       input WeatherCancelInput { departureId: ID!, reason: String! }
       input WeatherRebookInput { bookingId: ID!, departureId: ID! }
@@ -61,6 +63,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         operatorBookingByKey(idempotencyKey: String!): JSON
         weatherCancellations: JSON
         participantWaiver(participantId: ID!): JSON
+        salesReport(from: String!, to: String!, basis: String): JSON
         guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
       }
       type Mutation {
@@ -79,6 +82,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
+        exportSalesCsv(input: SalesReportInput!): JSON
         captureWaiverOnSite(input: CaptureWaiverInput!, idempotencyKey: String!): JSON
         weatherCancelDeparture(input: WeatherCancelInput!, idempotencyKey: String!): JSON
         rebookWeatherBooking(input: WeatherRebookInput!, idempotencyKey: String!): JSON
@@ -97,12 +101,12 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow,
         transitionGuidePayout, transitionChannelStatement,
-        cancelDeparture, captureWaiverOnSite, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
+        cancelDeparture, captureWaiverOnSite, exportSalesCsv, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },
     },
   });

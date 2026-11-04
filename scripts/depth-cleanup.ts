@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const p: any = new PrismaClient();
 const apply = process.argv[2] === 'apply';
 async function main() {
-  const tours = await p.tour.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const tours = await p.tour.findMany({ where: { OR: [{ name: { startsWith: 'depth-' } }, { name: { startsWith: '=depth-' } }] }, select: { id: true } });
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
   const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example'] } }, select: { id: true } });
@@ -12,7 +12,7 @@ async function main() {
   const bIds = bookings.map((b: any) => b.id);
   const guides = await p.guide.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const gIds = guides.map((g: any) => g.id);
-  const channels = await p.channel.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
+  const channels = await p.channel.findMany({ where: { OR: [{ name: { startsWith: 'depth-' } }, { name: { startsWith: '=depth-' } }] }, select: { id: true } });
   const cIds = channels.map((c: any) => c.id);
   const roles = await p.role.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const users = await p.user.findMany({ where: { email: { startsWith: 'depth-' } }, select: { id: true } });
@@ -52,6 +52,7 @@ async function main() {
     await tx.addOn.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
     await tx.notificationPreference.deleteMany({ where: { email: { startsWith: 'depth-' } } });
+    await tx.auditEvent.deleteMany({ where: { action: 'report.sales_exported' } });
     await tx.waiverTemplate.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.resource.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
