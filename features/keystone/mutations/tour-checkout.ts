@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy } from '../lib/tour-command';
+import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy, occupancyNumbers } from '../lib/tour-command';
+import { fastOperatorBooking } from './tour-operator-booking';
 import { placeHold } from './tour-catalog';
 import { createPayment, getPaymentStatus, refundPayment } from '../utils/paymentProviderAdapter';
 import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
@@ -320,19 +321,30 @@ export async function createChannelBooking(_r: any, args: any, context: any) {
   if (!['phone', 'walk_up', 'reseller'].includes(i.source)) throw new Error('Invalid booking source');
   if (i.paymentMethod !== 'cash') throw new Error('Only recorded cash payments are supported; use online checkout for cards');
   if (!String(i.lead?.name || '').trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.lead?.email || '')) throw new Error('Lead name and valid email required');
+  // No promo code or add-ons: the batched path (one catalog read, one write statement). Anything else uses the generic path.
+  if (!i.promoCode && !(i.addOns || []).length) return fastOperatorBooking(context, args, user);
   return command(context, args.idempotencyKey, 'createChannelBooking', i, [`departure:${i.departureId}`], async tx => {
-    let channel: any = null;
-    if (i.source === 'reseller') { channel = await tx.channel.findUnique({ where: { id: i.channelId } }); if (!channel?.active) throw new Error('Channel unavailable'); }
-    const hold = await placeHold(tx, { ...i, token: derivedToken('operator-hold', args.idempotencyKey + ':' + i.departureId) }, user.id, args.idempotencyKey, channel?.id, 60000);
+    let channelRow: any = null;
+    if (i.source === 'reseller') { channelRow = await tx.channel.findUnique({ where: { id: i.channelId } }); if (!channelRow?.active) throw new Error('Channel unavailable'); }
+    const hold = await placeHold(tx, { ...i, token: derivedToken('operator-hold', args.idempotencyKey + ':' + i.departureId) }, user.id, args.idempotencyKey, channelRow?.id, 60000);
     const quote = { ...hold.quote, departureId: i.departureId };
     const participants = buildParticipants(quote, i.participants);
-    const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: i.source, channel, holdId: hold.holdId, status: 'pending_payment' });
+    const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: i.source, channel: channelRow, holdId: hold.holdId, status: 'pending_payment' });
     const confirmed = await confirmBooking(tx, booking.id, user.id, args.idempotencyKey);
-    if (quote.totalCents > 0 && !(channel && channel.paymentModel === 'channel_collects')) {
-      await tx.payment.create({ data: { idempotencyKey: `tour-payment:${booking.id}`, amount: quote.totalCents, currencyCode: quote.currencyCode, status: 'succeeded', paymentMethod: i.paymentMethod === 'cash' ? 'cash' : 'credit_card', orderId: booking.id, processedAt: new Date(), processedById: user.id, notes: 'Collected by operator' } });
+    if (quote.totalCents > 0 && !(channelRow && channelRow.paymentModel === 'channel_collects')) {
+      await tx.payment.create({ data: { idempotencyKey: `tour-payment:${booking.id}`, amount: quote.totalCents, currencyCode: quote.currencyCode, status: 'succeeded', paymentMethod: 'cash', orderId: booking.id, processedAt: new Date(), processedById: user.id, notes: 'Collected by operator' } });
     }
     return { bookingRef: confirmed.bookingRef, waivers: [] };
   });
+}
+// Recovery lookup for a booking form whose request timed out or errored: did THIS idempotency key commit?
+export async function operatorBookingByKey(_r: any, args: any, context: any) {
+  await authorize(context, 'canManageBookings');
+  const key = String(args.idempotencyKey || ''); if (!key || key.length > 200) throw new Error('Idempotency key required');
+  const row = await context.prisma.idempotencyKey.findUnique({ where: { idempotencyKey: `createChannelBooking:${key}` } });
+  if (!row || row.recoveryPoint !== 'completed' || !row.responseBody?.bookingRef) return { found: false };
+  const booking = await context.prisma.booking.findUnique({ where: { bookingRef: row.responseBody.bookingRef }, select: { bookingRef: true, guestName: true, status: true, totalCents: true, seats: true } });
+  return booking ? { found: true, ...booking } : { found: false };
 }
 
 export async function signWaiver(_r: any, args: any, context: any) {

@@ -11,10 +11,16 @@ export async function getBookingOptions() {
   const tours = new Map(data.tours.map((t) => [t.id, t]))
   return { departures: data.departures.filter((d) => tours.has(d.tour?.id)).map((d) => ({ id: d.id, startAt: d.startAt, tour: tours.get(d.tour?.id) })), channels: data.channels }
 }
-export async function createOperatorBooking(input: Record<string, unknown>) {
-  const result = await platformMutation(`mutation($input:ChannelBookingInput!,$idempotencyKey:String!){createChannelBooking(input:$input,idempotencyKey:$idempotencyKey)}`, { input })
+export async function createOperatorBooking(input: Record<string, unknown>, idempotencyKey: string) {
+  // The key comes from the form, so a retry after a timeout replays the same command instead of booking again.
+  const result = await platformMutation(`mutation($input:ChannelBookingInput!,$idempotencyKey:String!){createChannelBooking(input:$input,idempotencyKey:$idempotencyKey)}`, { input, idempotencyKey })
   revalidatePath('/dashboard/platform/bookings')
   return result
+}
+// After a timeout or error: did this key commit? Returns the booking if so.
+export async function findOperatorBooking(idempotencyKey: string) {
+  const data = await platformQuery<{ operatorBookingByKey: any }>(`query($idempotencyKey:String!){ operatorBookingByKey(idempotencyKey:$idempotencyKey) }`, { idempotencyKey })
+  return data?.operatorBookingByKey?.found ? (data.operatorBookingByKey as { bookingRef: string; guestName: string; totalCents: number; seats: number }) : null
 }
 export async function getBookings(status: string | null) {
   const where = status ? { status: { equals: status } } : {}

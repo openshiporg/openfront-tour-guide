@@ -1,7 +1,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GraphQLError } from 'graphql';
 import { permissions, type Permission } from '../access';
-import { getOrCreateIdempotencyAttempt, updateIdempotencyAttempt } from '../utils/idempotency';
+import { updateIdempotencyAttempt, assertIdempotencyRequest, canonicalIdempotencyParams, idempotencyFingerprint } from '../utils/idempotency';
+import { Prisma } from '@prisma/client';
 export const opaqueToken = () => randomBytes(32).toString('base64url');
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
@@ -31,36 +32,66 @@ export async function command(context: any, key: string, operation: string, para
   try {
     return await runCommand(context, operation, scopedKey, params, locks, work);
   } catch (error: any) {
-    // Domain refusals ("Guide is unavailable", "Valid Water Safety certification required") are written for the operator;
-    // surface them with a user-facing code. Driver/Prisma failures keep the generic message.
-    if (error instanceof GraphQLError || /^Prisma/.test(error?.name || '') || !(error instanceof Error)) throw error;
-    throw new GraphQLError(error.message, { extensions: { code: 'KS_USER_INPUT_ERROR' }, originalError: error });
+    throw userFacingError(error);
   }
+}
+// Domain refusals ("Guide is unavailable", "Valid Water Safety certification required") are written for the operator;
+// surface them with a user-facing code. Driver/Prisma failures keep the generic message.
+export function userFacingError(error: any) {
+  if (error instanceof GraphQLError || /^Prisma/.test(error?.name || '') || !(error instanceof Error)) return error;
+  return new GraphQLError(error.message, { extensions: { code: 'KS_USER_INPUT_ERROR' }, originalError: error });
+}
+// All of a command's advisory locks in ONE round trip, taken in sorted order (the same order as taking them one by one).
+export async function lockTransactionKeys(tx: any, keys: string[]) {
+  const sorted = [...new Set(keys)].sort();
+  if (!sorted.length) return;
+  const calls = Prisma.join(sorted.map(k => Prisma.sql`pg_advisory_xact_lock(hashtextextended(${k}, 0))`));
+  const result = await tx.$queryRaw`SELECT true AS locked FROM (SELECT ${calls}) AS acquired`;
+  if (result instanceof Error) throw result;
+}
+// Insert-or-find in one round trip when the key is new (the common case); the idempotency lock is already held,
+// so a conflict means a genuine replay and costs one more read.
+async function claimIdempotencyKey(tx: any, key: string, operation: string, params: Record<string, unknown>) {
+  const requestParams = { ...canonicalIdempotencyParams(params), _fingerprint: idempotencyFingerprint(params) };
+  const id = 'c' + randomBytes(12).toString('hex');
+  const rows = await tx.$queryRaw`INSERT INTO "IdempotencyKey" (id, "idempotencyKey", "requestMethod", "requestPath", "requestParams", "recoveryPoint", "lockedAt", "updatedAt")
+    VALUES (${id}, ${key}, 'POST', ${operation}, ${JSON.stringify(requestParams)}::jsonb, 'started', now(), now())
+    ON CONFLICT ("idempotencyKey") DO NOTHING RETURNING id`;
+  if (rows.length) return { attempt: { id } as any, replay: false };
+  const existing = await tx.idempotencyKey.findUnique({ where: { idempotencyKey: key } });
+  assertIdempotencyRequest(existing, { key, requestPath: operation, requestParams: params });
+  return { attempt: existing, replay: true };
 }
 async function runCommand(context: any, operation: string, scopedKey: string, params: any, locks: string[], work: (tx: any) => Promise<any>) {
   return context.prisma.$transaction(async (tx: any) => {
-    for (const lock of [...new Set([`idempotency:${scopedKey}`, ...locks])].sort()) await lockTransactionKey(tx, lock);
-    const { attempt, replay } = await getOrCreateIdempotencyAttempt(tx, { key: scopedKey, requestPath: operation, requestParams: { ...params, actorId: context.session?.itemId || null } });
+    await lockTransactionKeys(tx, [`idempotency:${scopedKey}`, ...locks]);
+    const { attempt, replay } = await claimIdempotencyKey(tx, scopedKey, operation, { ...params, actorId: context.session?.itemId || null });
     if (replay && attempt.recoveryPoint === 'completed') return attempt.responseBody;
     const result = await work(tx);
     await updateIdempotencyAttempt(tx, attempt.id, 'completed', JSON.parse(JSON.stringify(result)), 200);
     return result;
   }, { timeout: 20000 });
 }
-export async function departureOccupancy(tx: any, departureId: string, excludeHoldId?: string, channelId?: string) {
+const COUNTED = "'confirmed','checked_in','completed','no_show'";
+// Seats taken, held and reserved for other channels, in ONE statement (it used to be 3 + one per channel).
+export async function occupancyNumbers(tx: any, departureId: string, startAt: Date, excludeHoldId?: string, channelId?: string) {
   const now = new Date();
+  const reserveChannels = startAt.getTime() - now.getTime() > 86400000;
+  const rows = await tx.$queryRawUnsafe(`SELECT
+    COALESCE((SELECT SUM(seats) FROM "Booking" WHERE departure = $1 AND status IN (${COUNTED})), 0)::int AS booked,
+    COALESCE((SELECT SUM(quantity) FROM "InventoryHold" WHERE departure = $1 AND status = 'active' AND "expiresAt" > $2 AND ($3::text IS NULL OR id <> $3)), 0)::int AS held,
+    COALESCE((SELECT SUM(GREATEST(0, c.allocation - COALESCE(s.sold, 0))) FROM "Channel" c
+      LEFT JOIN (SELECT channel, SUM(seats) AS sold FROM "Booking" WHERE departure = $1 AND status IN (${COUNTED}) GROUP BY channel) s ON s.channel = c.id
+      WHERE $4::boolean AND c.active AND c.allocation > 0 AND ($5::text IS NULL OR c.id <> $5)), 0)::int AS allocated,
+    d.status, d.capacity, d."bookingCutoffMinutes" AS cutoff,
+    (SELECT COUNT(*)::int FROM "InventoryHold" WHERE departure = $1 AND status = 'active' AND "expiresAt" <= $2) AS stale
+    FROM "Departure" d WHERE d.id = $1`,
+    departureId, now, excludeHoldId ?? null, reserveChannels, channelId ?? null);
+  return rows[0] as { booked: number; held: number; allocated: number; status: string; capacity: number; cutoff: number | null; stale: number };
+}
+export async function departureOccupancy(tx: any, departureId: string, excludeHoldId?: string, channelId?: string) {
   const departure = await tx.departure.findUnique({ where: { id: departureId }, include: { tour: true } });
   if (!departure) throw new Error('Departure not found');
-  const [bookings, holds, channels] = await Promise.all([
-    tx.booking.aggregate({ where: { departureId, status: { in: ['confirmed','checked_in','completed','no_show'] } }, _sum: { seats: true } }),
-    tx.inventoryHold.aggregate({ where: { departureId, status: 'active', expiresAt: { gt: now }, ...(excludeHoldId ? { id: { not: excludeHoldId } } : {}) }, _sum: { quantity: true } }),
-    departure.startAt.getTime() - now.getTime() > 86400000 ? tx.channel.findMany({ where: { active: true, allocation: { gt: 0 } } }) : [],
-  ]);
-  let allocated = 0;
-  for (const channel of channels) {
-    if (channel.id === channelId) continue;
-    const sold = await tx.booking.aggregate({ where: { departureId, channelId: channel.id, status: { in: ['confirmed','checked_in','completed','no_show'] } }, _sum: { seats: true } });
-    allocated += Math.max(0, channel.allocation - (sold._sum.seats || 0));
-  }
-  return { departure, booked: bookings._sum.seats || 0, held: holds._sum.quantity || 0, allocated, remaining: Math.max(0, departure.capacity - (bookings._sum.seats || 0) - (holds._sum.quantity || 0) - allocated) };
+  const { booked, held, allocated } = await occupancyNumbers(tx, departureId, departure.startAt, excludeHoldId, channelId);
+  return { departure, booked, held, allocated, remaining: Math.max(0, departure.capacity - booked - held - allocated) };
 }

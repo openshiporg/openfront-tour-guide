@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { createOperatorBooking } from '../actions/bookings'
+import { createOperatorBooking, findOperatorBooking } from '../actions/bookings'
 import { dayIn, timeIn, money } from '../../lib/format'
 
 export function OperatorBooking({ departures, channels }: { departures: any[]; channels: any[] }) {
@@ -13,15 +13,29 @@ export function OperatorBooking({ departures, channels }: { departures: any[]; c
   const [departureId, setDeparture] = useState(''), [ticketId, setTicket] = useState(''), [source, setSource] = useState('phone'), [channelId, setChannel] = useState('')
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [phone, setPhone] = useState(''), [names, setNames] = useState(''), [ages, setAges] = useState('')
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('')
+  // One key per booking attempt. It is reused for every retry of the SAME form values and replaced only after a confirmed result.
+  const attempt = useRef<{ key: string; fingerprint: string } | null>(null)
   const departure = departures.find(d => d.id === departureId)
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMessage('')
     const people = names.split('\n').map(n => n.trim()).filter(Boolean), ageValues = ages.split(',')
+    const payload = { departureId, source, channelId: source === 'reseller' ? channelId : undefined, paymentMethod: 'cash', tickets: [{ id: ticketId, qty: people.length }], lead: { name, email, phone }, participants: people.map((fullName, index) => ({ ticketTypeId: ticketId, fullName, ...(ageValues[index]?.trim() ? { age: Number(ageValues[index]) } : {}) })) }
+    const fingerprint = JSON.stringify(payload)
+    if (!attempt.current || attempt.current.fingerprint !== fingerprint) attempt.current = { key: crypto.randomUUID(), fingerprint }
+    const { key } = attempt.current
+    const done = (ref: string) => { setMessage(`Confirmed ${ref}`); setNames(''); attempt.current = null; router.refresh() }
     try {
-      const result = await createOperatorBooking({ departureId, source, channelId: source === 'reseller' ? channelId : undefined, paymentMethod: 'cash', tickets: [{ id: ticketId, qty: people.length }], lead: { name, email, phone }, participants: people.map((fullName, index) => ({ ticketTypeId: ticketId, fullName, ...(ageValues[index]?.trim() ? { age: Number(ageValues[index]) } : {}) })) })
-      if (!result.success) setMessage(result.error || 'Booking failed')
-      else { setMessage(`Confirmed ${(result.data as any)?.createChannelBooking?.bookingRef}`); setNames(''); router.refresh() }
-    } catch { setMessage('Booking failed') } finally { setBusy(false) }
+      const result = await createOperatorBooking(payload, key)
+      if (result.success) return done((result.data as any)?.createChannelBooking?.bookingRef)
+      // A failed or timed-out request may still have committed: look the key up before showing an error or allowing a retry.
+      const found = await findOperatorBooking(key).catch(() => null)
+      if (found) return done(found.bookingRef)
+      setMessage(result.error || 'Booking failed')
+    } catch {
+      const found = await findOperatorBooking(key).catch(() => null)
+      if (found) return done(found.bookingRef)
+      setMessage('Could not confirm the booking. Press Confirm booking again: the same request is safe to repeat and will not book twice.')
+    } finally { setBusy(false) }
   }
   return <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-medium">Phone / walk-up booking</summary>
     <form onSubmit={submit} className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
