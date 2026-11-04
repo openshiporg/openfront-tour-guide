@@ -5323,6 +5323,7 @@ type Query {
   toursOnSale: JSON
   tourAvailability(tourId: ID!, from: String!, to: String!): JSON
   lookupBooking(bookingRef: String!, email: String!): JSON
+  operatorBookingByKey(idempotencyKey: String!): JSON
 }
 
 union AuthenticatedItem = User

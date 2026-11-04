@@ -22,14 +22,16 @@ export function TodayClient({ departures }: { departures: any[] }) {
     else router.refresh()
   }
   const [capacity, setCapacity] = React.useState<Record<string, string>>({})
-  const run = async (id: string, work: () => Promise<{ success: boolean; error?: string }>, fallback: string) => {
-    setBusy(id); setError(null)
-    try { const r = await work(); if (!r.success) setError(r.error || fallback); else router.refresh() } catch { setError(fallback) } finally { setBusy(null) }
+  const [notice, setNotice] = React.useState<string | null>(null)
+  const run = async (id: string, work: () => Promise<{ success: boolean; error?: string }>, fallback: string, done = 'Saved') => {
+    setBusy(id); setError(null); setNotice(null)
+    try { const r = await work(); if (!r.success) setError(r.error || fallback); else { setNotice(done); router.refresh() } } catch { setError(fallback) } finally { setBusy(null) }
   }
   if (!departures.length) return <p className="p-4 text-sm text-muted-foreground">No departures today.</p>
   return (
     <div className="space-y-3 p-4">
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      {notice && <p role="status" className="font-mono text-xs uppercase tracking-wide text-emerald-700">{notice}</p>}
       {departures.map((d) => {
         const alerts = [!d.staffed && ['confirmed', 'full', 'on_sale', 'min_not_met'].includes(d.status) && d.booked > 0 ? 'Not staffed' : null, d.waiverGaps ? `${d.waiverGaps} waiver${d.waiverGaps === 1 ? '' : 's'} missing` : null, d.status === 'min_not_met' ? 'Minimum not met' : null].filter(Boolean)
         return (
@@ -50,7 +52,7 @@ export function TodayClient({ departures }: { departures: any[] }) {
             <div className="mt-3 flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline"><Link href={`/dashboard/platform/check-in?departure=${d.id}`}>Manifest</Link></Button>
               {['closed', 'in_progress'].includes(d.status) && new Date(d.endAt).getTime() <= Date.now() && (
-                <Button size="sm" disabled={busy === d.id} onClick={() => run(d.id, () => completeDepartureAction(d.id), 'Could not complete')}>Complete departure</Button>
+                <Button size="sm" disabled={busy === d.id} onClick={() => run(d.id, () => completeDepartureAction(d.id), 'Could not complete', 'Departure completed')}>Complete departure</Button>
               )}
               {!['cancelled', 'weather_cancelled', 'completed'].includes(d.status) && (
                 <Popover>
@@ -58,7 +60,7 @@ export function TodayClient({ departures }: { departures: any[] }) {
                   <PopoverContent className="w-64 space-y-2">
                     <p className="text-sm">Capacity cannot go below booked and held seats or above the tour maximum.</p>
                     <Input aria-label="Capacity" inputMode="numeric" placeholder={String(d.capacity)} value={capacity[d.id] || ''} onChange={(e) => setCapacity({ ...capacity, [d.id]: e.target.value })} />
-                    <Button size="sm" className="w-full" disabled={!/^[1-9][0-9]{0,3}$/.test(capacity[d.id] || '')} onClick={() => run(d.id, () => resizeDepartureAction(d.id, Number(capacity[d.id])), 'Could not resize')}>Set capacity</Button>
+                    <Button size="sm" className="w-full" disabled={!/^[1-9][0-9]{0,3}$/.test(capacity[d.id] || '')} onClick={() => run(d.id, () => resizeDepartureAction(d.id, Number(capacity[d.id])), 'Could not resize', `Capacity set to ${capacity[d.id]}`)}>Set capacity</Button>
                   </PopoverContent>
                 </Popover>
               )}
