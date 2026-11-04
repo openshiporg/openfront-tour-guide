@@ -1,7 +1,8 @@
 import { authorize, humanCode, hashToken, derivedToken, audit } from '../lib/tour-command';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { assignGuide, respondToAssignment, assignResource, checkInParticipant } from './tour-operations';
-import { createChannelBooking, cancelDepartureCore, refreshDepartureStatus } from './tour-checkout';
+import { createChannelBooking, refreshDepartureStatus } from './tour-checkout';
+import { weatherCancelDeparture } from './tour-weather';
 import { permissionNames } from '../access';
 
 const ENTITIES = ['settings', 'paymentProvider', 'role', 'meetingPoint', 'cancellationPolicy', 'waiver', 'promoCode', 'channel', 'resource', 'guide', 'tour'] as const;
@@ -114,7 +115,8 @@ export async function seedTourActivity(_r: any, { template, seed }: { template: 
       const t = (await p.ticketType.findMany({ where: { tourId: target.tourId } }))[0];
       try { await createChannelBooking(null, { idempotencyKey: idem(`weather:${i}`), input: { departureId: target.id, source: 'phone', paymentMethod: 'cash', tickets: [{ id: t.id, qty: 2 }], lead: { name: names[i], email: `weather${i}@guests.example` }, participants: [0, 1].map(k => ({ ticketTypeId: t.id, fullName: `${names[i]} ${k}`, age: 30 })) } }, context); } catch { /* ignored */ }
     }
-    await cancelDepartureCore(p, user.id, { departureId: target.id, reason: 'weather' }, idem('weather-cancel'));
+    // The same command operators use: a required reason, the audit trail and one weather notice per booking (honouring preferences).
+    await weatherCancelDeparture(null, { input: { departureId: target.id, reason: 'Small-craft advisory: sustained 25 kt winds forecast on the harbor' }, idempotencyKey: idem('weather-cancel') }, context);
   }
   // Completed history: past departures with check-ins and draft guide payouts.
   const history = tours.slice(0, 4);
