@@ -5331,6 +5331,8 @@ type Query {
   operatorBookingByKey(idempotencyKey: String!): JSON
   weatherCancellations: JSON
   participantWaiver(participantId: ID!): JSON
+  myDepartures(days: Int): JSON
+  pickupSheet(departureId: ID!): JSON
   salesReport(from: String!, to: String!, basis: String): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }

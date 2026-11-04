@@ -6,6 +6,7 @@ import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyB
 import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
+import { myDepartures, pickupSheet } from './tour-guide-day';
 import { salesReport, exportSalesCsv } from './tour-reports';
 import { participantWaiver, captureWaiverOnSite } from './tour-waiver-capture';
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
@@ -63,6 +64,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         operatorBookingByKey(idempotencyKey: String!): JSON
         weatherCancellations: JSON
         participantWaiver(participantId: ID!): JSON
+        myDepartures(days: Int): JSON
+        pickupSheet(departureId: ID!): JSON
         salesReport(from: String!, to: String!, basis: String): JSON
         guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
       }
@@ -101,7 +104,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { myDepartures, pickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow,

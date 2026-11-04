@@ -17,6 +17,7 @@ export async function CheckInPage({ searchParams }: { searchParams: Promise<{ de
         {manifest ? (
           <>
             <div className="px-4 pt-4"><h2 className="text-lg font-semibold">{manifest.departure.tourName}</h2><p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">{timeIn(manifest.departure.startAt)} · {manifest.departure.meetingPoint}<StatusLabel status={manifest.departure.status} /></p></div>
+            <p className="px-4 pt-2"><Link href={`/dashboard/platform/pickup?departure=${departure}`} className="inline-flex h-9 items-center rounded-md border px-3 text-sm">Pickup sheet</Link></p>
             <ManifestClient manifest={manifest} />
           </>
         ) : <p className="p-4 text-sm text-muted-foreground">Manifest not available.</p>}
