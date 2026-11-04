@@ -37,3 +37,27 @@ export async function refundAction(bookingId: string, amountCents: number, reaso
   revalidatePath('/dashboard/platform/bookings')
   return result
 }
+
+export async function getRefundThreshold() {
+  const data = await platformQuery<{ storeSettingsItems: { refundApprovalThresholdCents: number | null }[] }>(`query{ storeSettingsItems(take:1){ refundApprovalThresholdCents } }`)
+  return data?.storeSettingsItems?.[0]?.refundApprovalThresholdCents ?? 10000
+}
+export async function getRefundApprovals() {
+  const data = await platformQuery<{ authenticatedItem: { id: string } | null; managerApprovals: any[] }>(
+    `query{ authenticatedItem { ... on User { id } } managerApprovals(where:{status:{in:["pending","approved"]}, expiresAt:{gt:"${new Date().toISOString()}"}}, orderBy:[{requestedAt:desc}], take:50){ id targetId amount reason status expiresAt requestedBy{ id name } approvedBy{ name } } }`)
+  const rows = data?.managerApprovals || []
+  const ids = [...new Set(rows.map((r) => r.targetId))]
+  const found = ids.length ? await platformQuery<{ bookings: any[] }>(`query($ids:[ID!]){ bookings(where:{id:{in:$ids}}){ id bookingRef guestName currencyCode totalCents refundedCents } }`, { ids }) : null
+  const byId = new Map((found?.bookings || []).map((b) => [b.id, b]))
+  return { me: data?.authenticatedItem?.id || null, rows: rows.map((r) => ({ ...r, booking: byId.get(r.targetId) || null })) }
+}
+export async function requestApprovalAction(bookingId: string, amountCents: number, reason: string) {
+  const result = await platformMutation(`mutation($bookingId:ID!,$reason:String!,$amount:Int!){ requestRefundApproval(bookingId:$bookingId,reason:$reason,amount:$amount) }`, { bookingId, reason, amount: amountCents })
+  revalidatePath('/dashboard/platform/bookings')
+  return result
+}
+export async function approveRefundAction(approvalId: string) {
+  const result = await platformMutation(`mutation($approvalId:ID!){ approveRefund(approvalId:$approvalId) }`, { approvalId })
+  revalidatePath('/dashboard/platform/bookings')
+  return result
+}

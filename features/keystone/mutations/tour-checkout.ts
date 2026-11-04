@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy, occupancyNumbers } from '../lib/tour-command';
+import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy, occupancyNumbers, userFacingError } from '../lib/tour-command';
 import { fastOperatorBooking } from './tour-operator-booking';
 import { placeHold } from './tour-catalog';
 import { createPayment, getPaymentStatus, refundPayment } from '../utils/paymentProviderAdapter';
@@ -243,15 +243,24 @@ export async function cancelMyBooking(_r: any, args: any, context: any) {
   await issueRefund(context.prisma, { bookingId: booking.id, amount, reason: 'Guest cancellation per policy', key: `cancel:${booking.id}:${args.idempotencyKey}`, actorId: null, cancel: true });
   return bookingView(context.prisma, booking);
 }
-export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); return requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); }
-export async function approveRefund(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); return approveManagerApproval(root, { approvalId: args.approvalId }, context); }
+export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); const booking = await context.prisma.booking.findUnique({ where: { id: args.bookingId } }); if (!booking || !LIVE.includes(booking.status)) throw userFacingError(new Error('Booking cannot be refunded')); if (!Number.isSafeInteger(args.amount) || args.amount < 1 || args.amount > booking.totalCents - booking.refundedCents) throw userFacingError(new Error('Amount must be between 1 cent and the unrefunded balance')); const reason = String(args.reason || '').trim(); const open = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: args.amount, reason, requestedById: context.session.itemId, status: { in: ['pending', 'approved'] }, expiresAt: { gt: new Date() } } }); if (open) return open; return requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); }
+export async function approveRefund(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); try { return await approveManagerApproval(root, { approvalId: args.approvalId }, context); } catch (e) { throw userFacingError(e); } }
 export async function refundBooking(_r: any, args: any, context: any) {
   const user = await authorize(context, 'canIssueRefunds'); const i = args.input;
   const booking = await context.prisma.booking.findUnique({ where: { id: i.bookingId } });
   if (!booking || !LIVE.includes(booking.status)) throw new Error('Booking cannot be refunded');
   const settings = await context.prisma.storeSettings.findFirst();
   if (!i.reason?.trim()) throw new Error('Reason required');
-  await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId: i.approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
+  // Above the threshold the refund needs a second manager's approval. The requester does not paste an id: the newest approved,
+  // unexpired request for this exact booking, amount and reason that THEY filed is used (consumeManagerApproval re-checks it all).
+  let approvalId = i.approvalId;
+  const replayed = !approvalId && await context.prisma.refund.findUnique({ where: { idempotencyKey: `refund:${args.idempotencyKey}` }, select: { id: true } }); // a retry of a committed refund: its approval is already consumed
+  if (!approvalId && !replayed && i.amountCents > (settings?.refundApprovalThresholdCents ?? 10000)) {
+    const match = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: i.amountCents, reason: String(i.reason).trim(), requestedById: user.id, status: 'approved', expiresAt: { gt: new Date() } }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
+    approvalId = match?.id;
+    if (!approvalId) throw new Error('This refund is over the approval threshold. Request approval first: another manager must approve this exact amount and reason.');
+  }
+  await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
   const refund = await context.prisma.refund.findUnique({ where: { idempotencyKey: `refund:${args.idempotencyKey}` } });
   return { bookingRef: booking.bookingRef, refundId: refund?.id || null };
 }

@@ -8,20 +8,31 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, money, timeIn } from '../../lib/format'
-import { refundAction } from '../actions/bookings'
+import { refundAction, requestApprovalAction } from '../actions/bookings'
 
 import { STATUSES } from '../statuses'
 
-export function BookingsClient({ rows, counts, active }: { rows: any[]; counts: Record<string, number>; active: string | null }) {
+export function BookingsClient({ rows, counts, active, thresholdCents }: { rows: any[]; counts: Record<string, number>; active: string | null; thresholdCents: number }) {
   const router = useRouter()
   const [error, setError] = React.useState<string | null>(null)
+  const [notice, setNotice] = React.useState<string | null>(null)
   const [amount, setAmount] = React.useState('')
   const [reason, setReason] = React.useState('')
   const refund = async (b: any, cancel: boolean) => {
-    setError(null)
+    setError(null); setNotice(null)
     const cents = Math.round(Number(amount || (b.totalCents - b.refundedCents) / 100) * 100)
-    const r = await refundAction(b.id, cents, reason, cancel)
-    if (!r.success) setError(r.error || 'Refund failed'); else { setAmount(''); setReason(''); router.refresh() }
+    try {
+      const r = await refundAction(b.id, cents, reason, cancel)
+      if (r.success) { setAmount(''); setReason(''); setNotice(`Refunded ${money(cents, b.currencyCode)} on ${b.bookingRef}`); router.refresh(); return }
+      if (/over the approval threshold/.test(r.error || '')) {
+        // Over the threshold: file (or find) the approval request for this exact booking, amount and reason; no ids to paste.
+        const req = await requestApprovalAction(b.id, cents, reason.trim())
+        if (req.success) setNotice(`Approval requested for ${money(cents, b.currencyCode)} on ${b.bookingRef}. Another manager approves it under Refund approvals, then press Refund again.`)
+        else setError(req.error || 'Could not request approval')
+        router.refresh(); return
+      }
+      setError(r.error || 'Refund failed')
+    } catch { setError('Refund failed') }
   }
   return (
     <div className="space-y-3 p-4">
@@ -32,7 +43,8 @@ export function BookingsClient({ rows, counts, active }: { rows: any[]; counts: 
           </Link>
         ))}
       </div></div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      {notice && <p role="status" className="font-mono text-xs uppercase tracking-wide text-emerald-700">{notice}</p>}
       <ul className="space-y-2">
         {rows.map((b) => (
           <li key={b.id} className="rounded-xl border p-3">
@@ -46,6 +58,7 @@ export function BookingsClient({ rows, counts, active }: { rows: any[]; counts: 
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline">Refund</Button></PopoverTrigger>
                   <PopoverContent className="w-72 space-y-2">
+                    <p className="text-sm text-muted-foreground">Refunds over {money(thresholdCents, 'USD')} need another manager's approval.</p>
                     <Input inputMode="decimal" placeholder={`Amount (max ${((b.totalCents - b.refundedCents) / 100).toFixed(2)})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
                     <Input placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
                     <Button size="sm" className="w-full" disabled={!reason.trim()} onClick={() => refund(b, false)}>Refund</Button>
