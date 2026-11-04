@@ -3,7 +3,7 @@ import type { GraphQLSchema } from 'graphql';
 import redirectToInit from "./redirectToInit";
 import { toursOnSale, tourAvailability, createDepartureHold, waiverForToken } from './tour-catalog';
 import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyBooking, refundBooking, cancelDeparture, rebookWithCredit, createChannelBooking, operatorBookingByKey, signWaiver, sweepDepartures, checkoutHold, requestRefundApproval, approveRefund } from './tour-checkout';
-import { generateDepartures, assignGuide, respondToAssignment, assignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
+import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
 import { departuresInRange, departureManifest } from './tour-manifest';
@@ -34,6 +34,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input AssignGuideInput { departureId: ID!, guideId: ID!, role: String }
       input RespondAssignmentInput { assignmentId: ID!, status: String! }
       input AssignResourceInput { departureId: ID!, resourceId: ID!, quantity: Int! }
+      input UnassignResourceInput { departureId: ID! }
       input ResizeDepartureInput { departureId: ID!, capacity: Int! }
       input ParticipantActionInput { participantId: ID! }
       input BookingActionInput { bookingId: ID! }
@@ -64,6 +65,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         assignGuide(input: AssignGuideInput!, idempotencyKey: String!): JSON
         respondToAssignment(input: RespondAssignmentInput!, idempotencyKey: String!): JSON
         assignResource(input: AssignResourceInput!, idempotencyKey: String!): JSON
+        unassignResource(input: UnassignResourceInput!, idempotencyKey: String!): JSON
         resizeDeparture(input: ResizeDepartureInput!, idempotencyKey: String!): JSON
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
@@ -86,7 +88,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       Query: { operatorBookingByKey, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
-        generateDepartures, assignGuide, respondToAssignment, assignResource, resizeDeparture, checkInParticipant, markNoShow,
+        generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow,
         transitionGuidePayout, transitionChannelStatement,
         cancelDeparture, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },

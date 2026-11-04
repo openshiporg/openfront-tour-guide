@@ -50,6 +50,7 @@ async function main() {
     await tx.promoCode.deleteMany({ where: { id: { in: promos.map((x: any) => x.id) } } });
     await tx.addOn.deleteMany({ where: { tourId: { in: tourIds } } });
     await tx.tour.deleteMany({ where: { id: { in: tourIds } } });
+    await tx.resource.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });
     await tx.role.deleteMany({ where: { id: { in: roles.map((r: any) => r.id) } } });

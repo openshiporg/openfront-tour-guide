@@ -5140,6 +5140,7 @@ type Mutation {
   assignGuide(input: AssignGuideInput!, idempotencyKey: String!): JSON
   respondToAssignment(input: RespondAssignmentInput!, idempotencyKey: String!): JSON
   assignResource(input: AssignResourceInput!, idempotencyKey: String!): JSON
+  unassignResource(input: UnassignResourceInput!, idempotencyKey: String!): JSON
   resizeDeparture(input: ResizeDepartureInput!, idempotencyKey: String!): JSON
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
@@ -5569,6 +5570,10 @@ input AssignResourceInput {
   departureId: ID!
   resourceId: ID!
   quantity: Int!
+}
+
+input UnassignResourceInput {
+  departureId: ID!
 }
 
 input ResizeDepartureInput {

@@ -78,6 +78,19 @@ export async function assignResource(_r: any, args: any, context: any) {
     await audit(tx, context.session.itemId, 'resource.assigned', 'Departure', d.id, { capacity: d.capacity }, { capacity, resourceId: resource.id }); return result;
   });
 }
+export async function unassignResource(_r: any, args: any, context: any) {
+  await authorize(context, 'canManageResources'); const i = args.input;
+  return command(context, args.idempotencyKey, 'unassignResource', i, [`departure:${i.departureId}`], async tx => {
+    const d = await tx.departure.findUnique({ where: { id: i.departureId }, select: { id: true, status: true, capacity: true, endAt: true } });
+    if (!d) throw new Error('Departure not found');
+    if (['completed', 'cancelled', 'weather_cancelled'].includes(d.status)) throw new Error('This departure is finished; its resources are kept for the record');
+    const removed = await tx.resourceAssignment.deleteMany({ where: { departureId: d.id } });
+    if (!removed.count) throw new Error('No resource is assigned to this departure');
+    // Capacity is left as it was: shrinking it is a separate, explicit Resize (it cannot go below reservations).
+    await audit(tx, context.session.itemId, 'resource.unassigned', 'Departure', d.id, { assignments: removed.count }, null);
+    return { id: d.id, removed: removed.count };
+  });
+}
 export async function resizeDeparture(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures'); const i = args.input;
   return command(context, args.idempotencyKey, 'resizeDeparture', i, [`departure:${i.departureId}`], async tx => {
