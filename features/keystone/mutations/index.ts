@@ -8,7 +8,7 @@ import { generateDepartures, assignGuide, respondToAssignment, assignResource, r
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
-import { transitionGuidePayout } from './tour-settlement';
+import { transitionGuidePayout, transitionChannelStatement } from './tour-settlement';
 
 const graphql = String.raw;
 
@@ -74,6 +74,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         approveRefund(approvalId: ID!): JSON
         generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
         transitionGuidePayout(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
+        transitionChannelStatement(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
         sweepDepartures(idempotencyKey: String!): JSON
         ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
         seedTourActivity(template: String!, seed: JSON!): JSON
@@ -85,7 +86,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, resizeDeparture, checkInParticipant, markNoShow,
-        transitionGuidePayout,
+        transitionGuidePayout, transitionChannelStatement,
         cancelDeparture, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },
     },

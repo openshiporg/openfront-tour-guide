@@ -5150,6 +5150,8 @@ type Mutation {
   requestRefundApproval(bookingId: ID!, reason: String!, amount: Int!): JSON
   approveRefund(approvalId: ID!): JSON
   generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
+  transitionGuidePayout(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
+  transitionChannelStatement(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
   sweepDepartures(idempotencyKey: String!): JSON
   ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
   seedTourActivity(template: String!, seed: JSON!): JSON
@@ -5589,4 +5591,10 @@ input ChannelStatementInput {
   channelId: ID!
   from: String!
   to: String!
+}
+
+input SettlementTransitionInput {
+  id: ID!
+  status: String!
+  reference: String
 }

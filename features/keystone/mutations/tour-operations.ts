@@ -1,4 +1,4 @@
-import { authorize, command, audit, departureOccupancy } from '../lib/tour-command';
+import { authorize, command, audit, departureOccupancy, lockTransactionKey } from '../lib/tour-command';
 import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { settlement } from '../lib/tour-money';
@@ -138,7 +138,12 @@ export async function generateChannelStatement(_r: any, args: any, context: any)
   return command(context, args.idempotencyKey, 'generateChannelStatement', i, [`channel:${i.channelId}`], async tx => {
     const from = new Date(i.from), to = new Date(i.to); if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from) throw new Error('Invalid statement period');
     const channel = await tx.channel.findUnique({ where: { id: i.channelId } }); if (!channel) throw new Error('Channel not found');
-    const bookings = await tx.booking.findMany({ where: { channelId: channel.id, statementId: null, createdAt: { gte: from, lt: to }, status: { in: ['confirmed','completed','checked_in','no_show','partially_refunded','cancelled'] } } });
+    const where = { channelId: channel.id, statementId: null, createdAt: { gte: from, lt: to }, status: { in: ['confirmed','completed','checked_in','no_show','partially_refunded','cancelled'] } };
+    const candidates = await tx.booking.findMany({ where, select: { departureId: true } });
+    for (const id of [...new Set<string>(candidates.map((b: any) => b.departureId))].sort()) await lockTransactionKey(tx, `departure:${id}`);
+    const bookings = await tx.booking.findMany({ where });
+    if (!bookings.length) throw new Error('No unstatemented bookings in this period');
+    if (bookings.some((b: any) => b.currencyCode !== 'USD')) throw new Error('Mixed or unsupported statement currency');
     const grossCents = bookings.reduce((n: number,b: any) => n + b.totalCents - b.refundedCents,0);
     const commissionCents = bookings.reduce((n: number,b: any) => n + settlement(b.totalCents - b.refundedCents, b.totalCents ? Math.round(b.channelCommissionCents * 10000 / b.totalCents) : 0).commissionCents,0);
     const statement = await tx.channelStatement.create({ data: { statementKey: `${channel.id}:${from.toISOString()}:${to.toISOString()}`, channelId: channel.id, periodStart: from, periodEnd: to, grossCents, commissionCents, netDueCents: channel.paymentModel === 'channel_collects' ? grossCents - commissionCents : -commissionCents, status: 'open' } });
