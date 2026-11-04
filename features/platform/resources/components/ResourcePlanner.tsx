@@ -45,7 +45,7 @@ export function ResourcePlanner({ resources, departures }: { resources: Resource
           return (
             <li key={d.id} className="min-w-0 rounded-xl border p-3 text-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0"><p className="truncate font-semibold">{d.tourName}</p><p className="text-muted-foreground">{dayIn(d.startAt)} · {timeIn(d.startAt)} – {timeIn(d.endAt)} · needs {d.kind}</p></div>
+                <div className="min-w-0"><p className="truncate font-semibold">{d.tourName}</p><p className="text-muted-foreground">{dayIn(d.startAt)} · {timeIn(d.startAt)} – {timeIn(d.endAt)} · {d.assignment?.resource ? 'uses' : 'needs'} {d.kind}</p></div>
                 {d.assignment?.resource
                   ? <span className="font-mono text-xs uppercase tracking-wide text-emerald-700">{d.assignment.resource.name} × {d.assignment.quantity} · {d.capacity} seats</span>
                   : <span className="font-mono text-xs uppercase tracking-wide text-amber-700">No {d.kind} assigned</span>}

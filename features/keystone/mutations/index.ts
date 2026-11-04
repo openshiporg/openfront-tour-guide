@@ -6,6 +6,7 @@ import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyB
 import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
+import { guestNotifications } from './tour-notification-queue';
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
 import { transitionGuidePayout, transitionChannelStatement } from './tour-settlement';
@@ -53,6 +54,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         tourAvailability(tourId: ID!, from: String!, to: String!): JSON
         lookupBooking(bookingRef: String!, email: String!): JSON
         operatorBookingByKey(idempotencyKey: String!): JSON
+        guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
       }
       type Mutation {
         createDepartureHold(input: DepartureHoldInput!, idempotencyKey: String!): JSON
@@ -85,7 +87,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { operatorBookingByKey, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { operatorBookingByKey, guestNotifications, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow,
