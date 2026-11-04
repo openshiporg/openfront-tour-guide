@@ -1,4 +1,5 @@
 import { authorize, command, audit, departureOccupancy, lockTransactionKey } from '../lib/tour-command';
+import { assertDepartureAccess } from '../lib/tour-scope';
 import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { settlement } from '../lib/tour-money';
@@ -103,9 +104,10 @@ export async function resizeDeparture(_r: any, args: any, context: any) {
   });
 }
 export async function checkInParticipant(_r: any, args: any, context: any) {
-  await authorize(context, 'canCheckIn'); const i = args.input;
+  const actor = await authorize(context, 'canCheckIn'); const i = args.input;
   const participant = await context.prisma.participant.findUnique({ where: { id: i.participantId }, include: { booking: true } });
   if (!participant) throw new Error('Participant not found');
+  await assertDepartureAccess(context.prisma, actor, participant.booking.departureId);
   return command(context, args.idempotencyKey, 'checkInParticipant', i, [`departure:${participant.booking.departureId}`], async tx => {
     const p = await tx.participant.findUnique({ where: { id: participant.id }, include: { booking: true } });
     if (!['confirmed','checked_in'].includes(p.booking.status)) throw new Error('Booking is not confirmed');
@@ -117,9 +119,10 @@ export async function checkInParticipant(_r: any, args: any, context: any) {
   });
 }
 export async function markNoShow(_r: any, args: any, context: any) {
-  await authorize(context, 'canCheckIn'); const i = args.input;
+  const actor = await authorize(context, 'canCheckIn'); const i = args.input;
   const booking = await context.prisma.booking.findUnique({ where: { id: i.bookingId } });
   if (!booking) throw new Error('Booking not found');
+  await assertDepartureAccess(context.prisma, actor, booking.departureId);
   return command(context, args.idempotencyKey, 'markNoShow', i, [`departure:${booking.departureId}`], async tx => {
     const change = await tx.booking.updateMany({ where: { id: booking.id, status: 'confirmed' }, data: { status: 'no_show' } });
     if (change.count !== 1) throw new Error('Only confirmed bookings can be marked no show');

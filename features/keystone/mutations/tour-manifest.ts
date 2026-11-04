@@ -1,13 +1,15 @@
 import { authorize, audit } from '../lib/tour-command';
+import { assertDepartureAccess, scopedDepartureFilter } from '../lib/tour-scope';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'];
 // Operator reads for the Today and check-in screens. Capability-gated; medical notes are staff-only and audited.
 export async function departuresInRange(_r: any, args: any, context: any) {
-  await authorize(context, 'canCheckIn');
+  const user = await authorize(context, 'canCheckIn');
+  const scope = await scopedDepartureFilter(context.prisma, user);
   const from = new Date(args.from), to = new Date(args.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from || to.getTime() - from.getTime() > 31 * 86400000) throw new Error('Choose a range of at most 31 days');
   const rows = await context.prisma.departure.findMany({
-    where: { startAt: { gte: from, lt: to } }, orderBy: { startAt: 'asc' }, take: 300,
+    where: { startAt: { gte: from, lt: to }, ...(scope || {}) }, orderBy: { startAt: 'asc' }, take: 300,
     include: { tour: { select: { id: true, name: true, guideRatio: true, minParticipants: true, requiresWaiverId: true } }, assignedGuides: { include: { guide: { select: { id: true, name: true } } } }, resourceAssignments: { include: { resource: { select: { name: true } } } } },
   });
   const out = [];
@@ -30,6 +32,7 @@ export async function departuresInRange(_r: any, args: any, context: any) {
 export async function departureManifest(_r: any, args: any, context: any) {
   const user = await authorize(context, 'canCheckIn');
   const canMedical = !!user.role?.canReadMedicalNotes;
+  await assertDepartureAccess(context.prisma, user, String(args.departureId || ''));
   const d = await context.prisma.departure.findUnique({ where: { id: args.departureId }, include: { tour: { include: { meetingPoint: true } } } });
   if (!d) throw new Error('Departure not found');
   const bookings = await context.prisma.booking.findMany({ where: { departureId: d.id, status: { in: LIVE } }, orderBy: { bookingRef: 'asc' }, include: { participants: true } });

@@ -30,7 +30,7 @@ export async function CheckInPage({ searchParams }: { searchParams: Promise<{ de
     <PageContainer title="Check-in" breadcrumbs={crumbs}>
       <ul className="space-y-2 p-4">
         {rows.map((d) => <li key={d.id}><Link href={`/dashboard/platform/check-in?departure=${d.id}`} className="block rounded-xl border p-3 hover:bg-muted"><span className="block truncate text-sm font-medium">{d.tourName}</span><span className="block text-sm text-muted-foreground">{timeIn(d.startAt)} · <span className="font-mono">{d.booked}/{d.capacity}</span></span></Link></li>)}
-        {!rows.length && <li className="text-sm text-muted-foreground">No departures today.</li>}
+        {!rows.length && <li className="text-sm text-muted-foreground">No departures today. Guides see only the departures they have accepted.</li>}
       </ul>
     </PageContainer>
   )

@@ -1,5 +1,6 @@
 import { authorize, userFacingError } from '../lib/tour-command';
 import { zonedStart } from '../lib/tour-schedule';
+import { assertDepartureAccess } from '../lib/tour-scope';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'];
 const WORKING = ['accepted', 'worked'];
@@ -43,8 +44,7 @@ export async function pickupSheet(_r: any, args: any, context: any) {
     const db = context.prisma;
     const d = await db.departure.findUnique({ where: { id: String(args.departureId || '') }, include: { tour: { select: { name: true, meetingPoint: { select: { name: true, address: true, instructions: true } } } }, assignedGuides: { include: { guide: { select: { name: true, userId: true } } } } } });
     if (!d) throw new Error('Departure not found');
-    const staff = !!(user.role?.canManageDepartures || user.role?.canManageBookings);
-    if (!staff && !d.assignedGuides.some((a: any) => WORKING.includes(a.status) && a.guide?.userId === user.id)) throw new Error('This departure is not on your schedule');
+    await assertDepartureAccess(db, user, d.id);
     const bookings = await db.booking.findMany({ where: { departureId: d.id, status: { in: LIVE } }, orderBy: [{ pickupLocation: 'asc' }, { bookingRef: 'asc' }], select: { bookingRef: true, guestName: true, guestPhone: true, pickupLocation: true, specialRequests: true, seats: true, participants: { select: { fullName: true }, orderBy: { fullName: 'asc' } } } });
     const stops = new Map<string, any>();
     for (const b of bookings) {

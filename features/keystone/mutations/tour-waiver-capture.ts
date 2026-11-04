@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { command, audit, authorize, userFacingError } from '../lib/tour-command';
 import { plainText } from './tour-catalog';
+import { assertDepartureAccess } from '../lib/tour-scope';
 
 const LIVE = ['confirmed', 'checked_in'];
 
@@ -16,9 +17,10 @@ async function load(context: any, participantId: string) {
   return { participant, template };
 }
 export async function participantWaiver(_r: any, args: any, context: any) {
-  await authorize(context, 'canCheckIn');
+  const actor = await authorize(context, 'canCheckIn');
   try {
     const { participant, template } = await load(context, String(args.participantId));
+    await assertDepartureAccess(context.prisma, actor, participant.booking.departureId);
     return { participantId: participant.id, participantName: participant.fullName, age: participant.age, status: participant.waiverStatus, name: template.name, version: template.version, text: plainText(template.body) };
   } catch (e) { throw userFacingError(e); }
 }
@@ -30,6 +32,7 @@ export async function captureWaiverOnSite(_r: any, args: any, context: any) {
     if (!signerName) throw new Error('The signer must type their name');
     if (signerName.length > 200) throw new Error('Signer name is too long');
     const { participant, template } = await load(context, String(i.participantId));
+    await assertDepartureAccess(context.prisma, user, participant.booking.departureId);
     if (!LIVE.includes(participant.booking.status)) throw new Error('Booking is not confirmed');
     const bodyHash = createHash('sha256').update(JSON.stringify(template.body)).digest('hex');
     return await command(context, args.idempotencyKey, 'captureWaiverOnSite', { participantId: participant.id, signerName, isGuardian: !!i.isGuardian }, [`participant:${participant.id}`], async (tx: any) => {
