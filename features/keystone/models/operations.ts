@@ -4,8 +4,16 @@ import { domainList, name, state, money, currency, rel } from './domainFields';
 export const Channel = domainList('canManageChannels', { name: name(), commissionBps: integer({ defaultValue: 0, validation: { min: 0, max: 10000 } }), paymentModel: state(['channel_collects','we_collect']), contact: text(), active: checkbox({ defaultValue: true }), allocation: integer({ defaultValue: 0, validation: { min: 0 } }), bookings: rel('Booking.channel', true), statements: rel('ChannelStatement.channel', true) });
 export const ChannelStatement = domainList('canManageChannels', { channel: rel('Channel.statements'), periodStart: timestamp(), periodEnd: timestamp(), bookings: rel('Booking.statement', true), grossCents: money(), commissionCents: money(), netDueCents: money(), currencyCode: currency(), status: state(['open','invoiced','paid']), statementKey: text({ isIndexed: 'unique' }) }, true);
 export const OperationalTask = domainList('canManageDepartures', { name: name(), departure: rel('Departure.tasks'), status: state(['open','resolved']), taskKey: text({ isIndexed: 'unique' }), notes: text() }, true);
+// Waitlist for a full departure (Gym Waitlist + classCapacity donor). Command-only: entries are created, offered, converted and closed by
+// tour-waitlist.ts under the departure lock. An offer is an InventoryHold (offerHoldId) so the freed seats cannot be taken by a new arrival.
+export const WaitlistEntry = domainList('canManageBookings', {
+  departure: rel('Departure.waitlist'), guestName: text({ validation: { isRequired: true } }), guestEmail: text({ isIndexed: true }), guestPhone: text(),
+  seats: integer({ validation: { isRequired: true, min: 1 } }), tickets: json(), source: state(['online', 'phone']),
+  status: state(['waiting', 'offered', 'converted', 'expired', 'withdrawn']), offerHoldId: text({ isIndexed: true }), offeredAt: timestamp(), offerExpiresAt: timestamp(),
+  bookingRef: text(), note: text(),
+}, true);
 export const NotificationPreference = domainList('canManageBookings', { email: text({ isIndexed: 'unique' }), bookingUpdates: checkbox({ defaultValue: true }), weatherCancellation: checkbox({ defaultValue: true }) });
-const settingsList = domainList('canManageSettings', { name: name(), timezone: text({ defaultValue: 'America/New_York' }), address: text(), currencyCode: currency(), refundApprovalThresholdCents: integer({ defaultValue: 10000, validation: { min: 0 } }), taxBps: integer({ defaultValue: 0, validation: { min: 0, max: 10000 } }), settingsKey: text({ defaultValue: 'operator', isIndexed: 'unique' }) });
+const settingsList = domainList('canManageSettings', { name: name(), timezone: text({ defaultValue: 'America/New_York' }), address: text(), currencyCode: currency(), refundApprovalThresholdCents: integer({ defaultValue: 10000, validation: { min: 0 } }), waitlistOfferHours: integer({ defaultValue: 12, validation: { min: 1, max: 168 } }), taxBps: integer({ defaultValue: 0, validation: { min: 0, max: 10000 } }), settingsKey: text({ defaultValue: 'operator', isIndexed: 'unique' }) });
 // Writing operator settings (tax, currency, refund threshold) needs canManageSettings. Reading stays open to the roles whose screens
 // show those values (the refund threshold on Bookings), so refund and booking staff are not locked out of their own screens.
 const readsSettings = (args: any) => permissions.canManageSettings(args) || permissions.canIssueRefunds(args) || permissions.canManageBookings(args);

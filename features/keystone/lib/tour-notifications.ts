@@ -1,10 +1,10 @@
 // Guest notification queue. Records only: nothing here talks to a mail or SMS transport.
 // Each decision is stored as an AuditEvent (action notification.queued | notification.suppressed) so a later worker can
 // deliver the queued ones and the suppressed ones stay as evidence that the guest's preference was honoured.
-export type NotificationKind = 'booking_confirmation' | 'day_before_reminder' | 'weather_cancellation';
+export type NotificationKind = 'booking_confirmation' | 'day_before_reminder' | 'weather_cancellation' | 'waitlist_offer';
 export type Preference = { bookingUpdates?: boolean | null; weatherCancellation?: boolean | null } | null | undefined;
 
-const PREFERENCE_FOR: Record<NotificationKind, 'bookingUpdates' | 'weatherCancellation'> = { booking_confirmation: 'bookingUpdates', day_before_reminder: 'bookingUpdates', weather_cancellation: 'weatherCancellation' };
+const PREFERENCE_FOR: Record<NotificationKind, 'bookingUpdates' | 'weatherCancellation'> = { booking_confirmation: 'bookingUpdates', day_before_reminder: 'bookingUpdates', weather_cancellation: 'weatherCancellation', waitlist_offer: 'bookingUpdates' };
 const OPT_OUT_REASON: Record<'bookingUpdates' | 'weatherCancellation', string> = { bookingUpdates: 'Guest opted out of booking updates', weatherCancellation: 'Guest opted out of weather cancellation notices' };
 
 // Email is the only channel the preference model carries. No stored preference means the defaults (opted in).
@@ -19,7 +19,7 @@ export function decideNotification(email: string, pref: Preference, kind: Notifi
 export const notificationRequestId = (kind: NotificationKind, bookingId: string) => `notify:${kind}:${bookingId}`;
 
 type Booking = { bookingRef: string; guestName?: string | null; guestEmail?: string | null };
-type Trip = { refundCents?: number; currency?: string; tourName: string; startAt: Date | string; timezone?: string | null; meetingPoint?: { name?: string; address?: string; instructions?: string } | null };
+type Trip = { offerExpiresAt?: Date | string; seats?: number; refundCents?: number; currency?: string; tourName: string; startAt: Date | string; timezone?: string | null; meetingPoint?: { name?: string; address?: string; instructions?: string } | null };
 
 const when = (startAt: Date | string, timezone?: string | null) => {
   try { return new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeStyle: 'short', timeZone: timezone || 'UTC' }).format(new Date(startAt)); }
@@ -33,6 +33,10 @@ export function composeNotification(kind: NotificationKind, booking: Booking, tr
   const at = when(trip.startAt, trip.timezone);
   if (kind === 'booking_confirmation') {
     return { subject: `Booking ${booking.bookingRef} confirmed: ${trip.tourName}`, text: `Hi ${name},\n\nYour booking ${booking.bookingRef} for ${trip.tourName} on ${at} is confirmed.${meet}` };
+  }
+  if (kind === 'waitlist_offer') {
+    const until = trip.offerExpiresAt ? when(trip.offerExpiresAt, trip.timezone) : 'soon';
+    return { subject: `Seats are free: ${trip.tourName}`, text: `Hi ${name},\n\n${trip.seats || 'The'} seat${trip.seats === 1 ? ' is' : 's are'} now held for you on ${trip.tourName} on ${at}. Open the waitlist link you received when you joined to book them before ${until}. After that the seats go to the next guest.` };
   }
   if (kind === 'weather_cancellation') {
     const refund = typeof trip.refundCents === 'number' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD' }).format(trip.refundCents / 100) : 'your payment';

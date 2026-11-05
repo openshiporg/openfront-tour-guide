@@ -48,10 +48,10 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
     if (!r.checkout.clientSecret) { const done = await completeCheckout(r.checkout.bookingRef, `complete:${r.checkout.bookingRef}`); sessionStorage.setItem('tg_email', lead.email); return done.ok ? router.push(`/bookings/${r.checkout.bookingRef}`) : setError(done.error) }
     setCheckout(r.checkout)
   }
-  const mm = String(Math.floor(left / 60000)).padStart(2, '0'), ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
+  const hh = Math.floor(left / 3600000), mm = String(Math.floor((left % 3600000) / 60000)).padStart(2, '0'), ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-xl font-semibold">{quote.tour.name}</h1><p className="text-sm text-muted-foreground">{when(quote.tour.startAt, quote.tour.timezone)}</p></div><p className="font-mono text-sm">Held {mm}:{ss}</p></header>
+      <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-xl font-semibold">{quote.tour.name}</h1><p className="text-sm text-muted-foreground">{when(quote.tour.startAt, quote.tour.timezone)}</p></div><p className="font-mono text-sm">Held {hh > 0 ? `${hh}h ${mm}m` : `${mm}:${ss}`}</p></header>
       <ul className="space-y-1 text-sm">{quote.lines.map((l: any, i: number) => <li key={i} className="flex justify-between gap-2"><span>{l.qty} × {l.name}</span><span className="font-mono">{money(l.unitPriceCents * l.qty, quote.currencyCode)}</span></li>)}
         {quote.discountCents > 0 && <li className="flex justify-between"><span>Discount</span><span className="font-mono">−{money(quote.discountCents, quote.currencyCode)}</span></li>}
         {quote.taxCents > 0 && <li className="flex justify-between"><span>Tax</span><span className="font-mono">{money(quote.taxCents, quote.currencyCode)}</span></li>}

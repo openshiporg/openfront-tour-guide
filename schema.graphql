@@ -1546,6 +1546,8 @@ type Departure {
   bookingsCount(where: BookingWhereInput! = {}): Int
   tasks(where: OperationalTaskWhereInput! = {}, orderBy: [OperationalTaskOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: OperationalTaskWhereUniqueInput): [OperationalTask!]
   tasksCount(where: OperationalTaskWhereInput! = {}): Int
+  waitlist(where: WaitlistEntryWhereInput! = {}, orderBy: [WaitlistEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: WaitlistEntryWhereUniqueInput): [WaitlistEntry!]
+  waitlistCount(where: WaitlistEntryWhereInput! = {}): Int
   notes: String
   booked: Int
   held: Int
@@ -1592,6 +1594,7 @@ input DepartureWhereInput {
   holds: InventoryHoldManyRelationFilter
   bookings: BookingManyRelationFilter
   tasks: OperationalTaskManyRelationFilter
+  waitlist: WaitlistEntryManyRelationFilter
   notes: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -1639,6 +1642,12 @@ input OperationalTaskManyRelationFilter {
   none: OperationalTaskWhereInput
 }
 
+input WaitlistEntryManyRelationFilter {
+  every: WaitlistEntryWhereInput
+  some: WaitlistEntryWhereInput
+  none: WaitlistEntryWhereInput
+}
+
 input DepartureOrderByInput {
   id: OrderDirection
   departureKey: OrderDirection
@@ -1666,6 +1675,7 @@ input DepartureUpdateInput {
   holds: InventoryHoldRelateToManyForUpdateInput
   bookings: BookingRelateToManyForUpdateInput
   tasks: OperationalTaskRelateToManyForUpdateInput
+  waitlist: WaitlistEntryRelateToManyForUpdateInput
   notes: String
   createdAt: DateTime
   updatedAt: DateTime
@@ -1705,6 +1715,13 @@ input OperationalTaskRelateToManyForUpdateInput {
   connect: [OperationalTaskWhereUniqueInput!]
 }
 
+input WaitlistEntryRelateToManyForUpdateInput {
+  disconnect: [WaitlistEntryWhereUniqueInput!]
+  set: [WaitlistEntryWhereUniqueInput!]
+  create: [WaitlistEntryCreateInput!]
+  connect: [WaitlistEntryWhereUniqueInput!]
+}
+
 input DepartureUpdateArgs {
   where: DepartureWhereUniqueInput!
   data: DepartureUpdateInput!
@@ -1724,6 +1741,7 @@ input DepartureCreateInput {
   holds: InventoryHoldRelateToManyForCreateInput
   bookings: BookingRelateToManyForCreateInput
   tasks: OperationalTaskRelateToManyForCreateInput
+  waitlist: WaitlistEntryRelateToManyForCreateInput
   notes: String
   createdAt: DateTime
   updatedAt: DateTime
@@ -1752,6 +1770,11 @@ input InventoryHoldRelateToManyForCreateInput {
 input OperationalTaskRelateToManyForCreateInput {
   create: [OperationalTaskCreateInput!]
   connect: [OperationalTaskWhereUniqueInput!]
+}
+
+input WaitlistEntryRelateToManyForCreateInput {
+  create: [WaitlistEntryCreateInput!]
+  connect: [WaitlistEntryWhereUniqueInput!]
 }
 
 type Guide {
@@ -3683,6 +3706,135 @@ input NotificationPreferenceCreateInput {
   updatedAt: DateTime
 }
 
+type WaitlistEntry {
+  id: ID!
+  departure: Departure
+  guestName: String
+  guestEmail: String
+  guestPhone: String
+  seats: Int
+  tickets: JSON
+  source: WaitlistEntrySourceType
+  status: WaitlistEntryStatusType
+  offerHoldId: String
+  offeredAt: DateTime
+  offerExpiresAt: DateTime
+  bookingRef: String
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum WaitlistEntrySourceType {
+  online
+  phone
+}
+
+enum WaitlistEntryStatusType {
+  waiting
+  offered
+  converted
+  expired
+  withdrawn
+}
+
+input WaitlistEntryWhereUniqueInput {
+  id: ID
+}
+
+input WaitlistEntryWhereInput {
+  AND: [WaitlistEntryWhereInput!]
+  OR: [WaitlistEntryWhereInput!]
+  NOT: [WaitlistEntryWhereInput!]
+  id: IDFilter
+  departure: DepartureWhereInput
+  guestName: StringFilter
+  guestEmail: StringFilter
+  guestPhone: StringFilter
+  seats: IntFilter
+  source: WaitlistEntrySourceTypeNullableFilter
+  status: WaitlistEntryStatusTypeNullableFilter
+  offerHoldId: StringFilter
+  offeredAt: DateTimeNullableFilter
+  offerExpiresAt: DateTimeNullableFilter
+  bookingRef: StringFilter
+  note: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input WaitlistEntrySourceTypeNullableFilter {
+  equals: WaitlistEntrySourceType
+  in: [WaitlistEntrySourceType!]
+  notIn: [WaitlistEntrySourceType!]
+  not: WaitlistEntrySourceTypeNullableFilter
+}
+
+input WaitlistEntryStatusTypeNullableFilter {
+  equals: WaitlistEntryStatusType
+  in: [WaitlistEntryStatusType!]
+  notIn: [WaitlistEntryStatusType!]
+  not: WaitlistEntryStatusTypeNullableFilter
+}
+
+input WaitlistEntryOrderByInput {
+  id: OrderDirection
+  guestName: OrderDirection
+  guestEmail: OrderDirection
+  guestPhone: OrderDirection
+  seats: OrderDirection
+  source: OrderDirection
+  status: OrderDirection
+  offerHoldId: OrderDirection
+  offeredAt: OrderDirection
+  offerExpiresAt: OrderDirection
+  bookingRef: OrderDirection
+  note: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input WaitlistEntryUpdateInput {
+  departure: DepartureRelateToOneForUpdateInput
+  guestName: String
+  guestEmail: String
+  guestPhone: String
+  seats: Int
+  tickets: JSON
+  source: WaitlistEntrySourceType
+  status: WaitlistEntryStatusType
+  offerHoldId: String
+  offeredAt: DateTime
+  offerExpiresAt: DateTime
+  bookingRef: String
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input WaitlistEntryUpdateArgs {
+  where: WaitlistEntryWhereUniqueInput!
+  data: WaitlistEntryUpdateInput!
+}
+
+input WaitlistEntryCreateInput {
+  departure: DepartureRelateToOneForCreateInput
+  guestName: String
+  guestEmail: String
+  guestPhone: String
+  seats: Int
+  tickets: JSON
+  source: WaitlistEntrySourceType
+  status: WaitlistEntryStatusType
+  offerHoldId: String
+  offeredAt: DateTime
+  offerExpiresAt: DateTime
+  bookingRef: String
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
 type StoreSettings {
   id: ID!
   name: String
@@ -3690,6 +3842,7 @@ type StoreSettings {
   address: String
   currencyCode: String
   refundApprovalThresholdCents: Int
+  waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
   createdAt: DateTime
@@ -3711,6 +3864,7 @@ input StoreSettingsWhereInput {
   address: StringFilter
   currencyCode: StringFilter
   refundApprovalThresholdCents: IntNullableFilter
+  waitlistOfferHours: IntNullableFilter
   taxBps: IntNullableFilter
   settingsKey: StringFilter
   createdAt: DateTimeFilter
@@ -3724,6 +3878,7 @@ input StoreSettingsOrderByInput {
   address: OrderDirection
   currencyCode: OrderDirection
   refundApprovalThresholdCents: OrderDirection
+  waitlistOfferHours: OrderDirection
   taxBps: OrderDirection
   settingsKey: OrderDirection
   createdAt: OrderDirection
@@ -3736,6 +3891,7 @@ input StoreSettingsUpdateInput {
   address: String
   currencyCode: String
   refundApprovalThresholdCents: Int
+  waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
   createdAt: DateTime
@@ -3753,6 +3909,7 @@ input StoreSettingsCreateInput {
   address: String
   currencyCode: String
   refundApprovalThresholdCents: Int
+  waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
   createdAt: DateTime
@@ -5058,6 +5215,12 @@ type Mutation {
   updateNotificationPreferences(data: [NotificationPreferenceUpdateArgs!]!): [NotificationPreference]
   deleteNotificationPreference(where: NotificationPreferenceWhereUniqueInput!): NotificationPreference
   deleteNotificationPreferences(where: [NotificationPreferenceWhereUniqueInput!]!): [NotificationPreference]
+  createWaitlistEntry(data: WaitlistEntryCreateInput!): WaitlistEntry
+  createWaitlistEntries(data: [WaitlistEntryCreateInput!]!): [WaitlistEntry]
+  updateWaitlistEntry(where: WaitlistEntryWhereUniqueInput!, data: WaitlistEntryUpdateInput!): WaitlistEntry
+  updateWaitlistEntries(data: [WaitlistEntryUpdateArgs!]!): [WaitlistEntry]
+  deleteWaitlistEntry(where: WaitlistEntryWhereUniqueInput!): WaitlistEntry
+  deleteWaitlistEntries(where: [WaitlistEntryWhereUniqueInput!]!): [WaitlistEntry]
   createStoreSettings(data: StoreSettingsCreateInput!): StoreSettings
   createStoreSettingsItems(data: [StoreSettingsCreateInput!]!): [StoreSettings]
   updateStoreSettings(where: StoreSettingsWhereUniqueInput!, data: StoreSettingsUpdateInput!): StoreSettings
@@ -5152,6 +5315,12 @@ type Mutation {
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
   resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
+  joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+  addToWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+  claimWaitlistOffer(entryId: ID!, token: String!, cartToken: String!): JSON
+  leaveWaitlist(entryId: ID!, token: String!, idempotencyKey: String!): JSON
+  withdrawWaitlistEntry(input: WaitlistWithdrawInput!, idempotencyKey: String!): JSON
+  bookWaitlistOffer(input: WaitlistBookInput!, idempotencyKey: String!): JSON
   moveBooking(input: MoveBookingInput!, idempotencyKey: String!): JSON
   cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
   exportSalesCsv(input: SalesReportInput!): JSON
@@ -5288,6 +5457,9 @@ type Query {
   notificationPreference(where: NotificationPreferenceWhereUniqueInput!): NotificationPreference
   notificationPreferences(where: NotificationPreferenceWhereInput! = {}, orderBy: [NotificationPreferenceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: NotificationPreferenceWhereUniqueInput): [NotificationPreference!]
   notificationPreferencesCount(where: NotificationPreferenceWhereInput! = {}): Int
+  waitlistEntry(where: WaitlistEntryWhereUniqueInput!): WaitlistEntry
+  waitlistEntries(where: WaitlistEntryWhereInput! = {}, orderBy: [WaitlistEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: WaitlistEntryWhereUniqueInput): [WaitlistEntry!]
+  waitlistEntriesCount(where: WaitlistEntryWhereInput! = {}): Int
   storeSettings(where: StoreSettingsWhereUniqueInput!): StoreSettings
   storeSettingsItems(where: StoreSettingsWhereInput! = {}, orderBy: [StoreSettingsOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StoreSettingsWhereUniqueInput): [StoreSettings!]
   storeSettingsItemsCount(where: StoreSettingsWhereInput! = {}): Int
@@ -5346,6 +5518,8 @@ type Query {
   pickupSheet(departureId: ID!): JSON
   dayPickupSheet(day: String!): JSON
   salesReport(from: String!, to: String!, basis: String): JSON
+  waitlistStatus(entryId: ID!, token: String!): JSON
+  waitlistBoard(status: String): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }
 
@@ -5636,6 +5810,23 @@ input BookingActionInput {
 input ResetGuestLinkInput {
   bookingId: ID!
   reason: String
+}
+
+input WaitlistJoinInput {
+  departureId: ID!
+  tickets: [TourTicketChoice!]!
+  lead: BookingLeadInput!
+  note: String
+}
+
+input WaitlistWithdrawInput {
+  entryId: ID!
+  reason: String!
+}
+
+input WaitlistBookInput {
+  entryId: ID!
+  participants: [String!]!
 }
 
 input MoveBookingInput {

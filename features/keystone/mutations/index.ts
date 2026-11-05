@@ -12,6 +12,7 @@ import { participantWaiver, captureWaiverOnSite } from './tour-waiver-capture';
 import { manageBooking, cancelManagedBooking, rescheduleManagedBooking, resetGuestLink, moveBooking, bookingMoveOptions } from './tour-self-service';
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
 import { guestNotifications } from './tour-notification-queue';
+import { joinWaitlist, addToWaitlist, waitlistStatus, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer, waitlistBoard } from './tour-waitlist';
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
 import { transitionGuidePayout, transitionChannelStatement } from './tour-settlement';
@@ -49,6 +50,9 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input ParticipantActionInput { participantId: ID! }
       input BookingActionInput { bookingId: ID! }
       input ResetGuestLinkInput { bookingId: ID!, reason: String }
+      input WaitlistJoinInput { departureId: ID!, tickets: [TourTicketChoice!]!, lead: BookingLeadInput!, note: String }
+      input WaitlistWithdrawInput { entryId: ID!, reason: String! }
+      input WaitlistBookInput { entryId: ID!, participants: [String!]! }
       input MoveBookingInput { bookingId: ID!, departureId: ID!, reason: String! }
       input CloseDepartureInput { departureId: ID! }
       input ChannelStatementInput { channelId: ID!, from: String!, to: String! }
@@ -73,6 +77,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         pickupSheet(departureId: ID!): JSON
         dayPickupSheet(day: String!): JSON
         salesReport(from: String!, to: String!, basis: String): JSON
+        waitlistStatus(entryId: ID!, token: String!): JSON
+        waitlistBoard(status: String): JSON
         guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
       }
       type Mutation {
@@ -93,6 +99,12 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
+        joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+        addToWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+        claimWaitlistOffer(entryId: ID!, token: String!, cartToken: String!): JSON
+        leaveWaitlist(entryId: ID!, token: String!, idempotencyKey: String!): JSON
+        withdrawWaitlistEntry(input: WaitlistWithdrawInput!, idempotencyKey: String!): JSON
+        bookWaitlistOffer(input: WaitlistBookInput!, idempotencyKey: String!): JSON
         moveBooking(input: MoveBookingInput!, idempotencyKey: String!): JSON
         cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
         exportSalesCsv(input: SalesReportInput!): JSON
@@ -114,11 +126,12 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, resetGuestLink, moveBooking,
         transitionGuidePayout, transitionChannelStatement,
+        joinWaitlist, addToWaitlist, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer,
         cancelDeparture, captureWaiverOnSite, exportSalesCsv, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },
     },

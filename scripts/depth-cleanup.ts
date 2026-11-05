@@ -6,7 +6,7 @@ async function main() {
   const tours = await p.tour.findMany({ where: { OR: [{ name: { startsWith: 'depth-' } }, { name: { startsWith: '=depth-' } }] }, select: { id: true } });
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
-  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example', 'depth-ui-move@test.example'] } }, select: { id: true } });
+  const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example', 'depth-ui-move@test.example', 'depth-wl-ana@test.example', 'depth-wl-ben@test.example', 'depth-wl-cy@test.example'] } }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
   const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);
@@ -41,6 +41,9 @@ async function main() {
     await tx.guideCertification.deleteMany({ where: { guideId: { in: gIds } } });
     await tx.guideAvailability.deleteMany({ where: { guideId: { in: gIds } } });
     await tx.guide.deleteMany({ where: { id: { in: gIds } } });
+    const wl = (await tx.waitlistEntry.findMany({ where: { departureId: { in: depIds } }, select: { id: true } })).map((w: any) => w.id);
+    await tx.auditEvent.deleteMany({ where: { OR: [{ targetList: 'WaitlistEntry', targetId: { in: wl } }, { targetList: 'Notification', targetId: { in: wl.map((id: string) => `waitlist_offer:${id}`) } }] } });
+    await tx.waitlistEntry.deleteMany({ where: { id: { in: wl } } });
     await tx.resourceAssignment.deleteMany({ where: { departureId: { in: depIds } } });
     await tx.operationalTask.deleteMany({ where: { departureId: { in: depIds } } });
     await tx.departure.deleteMany({ where: { id: { in: depIds } } });

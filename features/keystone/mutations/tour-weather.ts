@@ -1,6 +1,7 @@
 import { command, audit, authorize, occupancyNumbers, derivedToken, userFacingError } from '../lib/tour-command';
 import { placeHold } from './tour-catalog';
 import { confirmBooking, newBooking, queueGuestNotification } from './tour-checkout';
+import { closeWaitlist } from './tour-waitlist';
 
 const PENDING = ['confirmed', 'checked_in', 'partially_refunded'];
 const OPEN_FOR_SALE = ['on_sale', 'confirmed', 'min_not_met'];
@@ -28,6 +29,7 @@ async function weatherCancelCore(args: any, context: any) {
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h: any) => h.id) }, status: 'reserved' }, data: { status: 'released' } });
       await tx.booking.updateMany({ where: { departureId: d.id, status: 'pending_payment' }, data: { status: 'cancelled' } });
       await tx.guideAssignment.updateMany({ where: { departureId: d.id, status: { in: ['offered', 'accepted'] } }, data: { status: 'cancelled' } });
+      await closeWaitlist(tx, d.id, 'Departure cancelled for weather');
       await audit(tx, user.id, 'departure.weather_cancelled', 'Departure', d.id, { status: d.status }, { status: 'weather_cancelled' }, reason, args.idempotencyKey);
     }
     const bookings = await tx.booking.findMany({ where: { departureId: d.id, status: { in: PENDING } } });

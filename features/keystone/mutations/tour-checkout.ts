@@ -6,6 +6,7 @@ import { placeHold } from './tour-catalog';
 import { createPayment, getPaymentStatus, refundPayment } from '../utils/paymentProviderAdapter';
 import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
 import { refundPolicyAmount, basisPoints, minimumDecision } from '../lib/tour-money';
+import { promoteWaitlist, markWaitlistConverted, closeWaitlist } from './tour-waitlist';
 import { consumeManagerApproval, requestManagerApproval, approveManagerApproval } from '../utils/managerApproval';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded', 'refunded'];
@@ -93,6 +94,7 @@ export async function confirmBooking(tx: any, bookingId: string, actorId: string
     await tx.promoRedemption.update({ where: { id: r.id }, data: { status: 'committed', bookingId: booking.id } });
     await tx.promoCode.update({ where: { id: r.promoCodeId }, data: { usedCount: { increment: 1 } } });
   }
+  await markWaitlistConverted(tx, hold.id, booking.bookingRef);
   await refreshDepartureStatus(tx, booking.departureId);
   await audit(tx, actorId, 'booking.confirmed', 'Booking', booking.id, { status: booking.status }, { status: 'confirmed', seats }, '', requestId);
   const snap = booking.tourSnapshot || {};
@@ -119,7 +121,7 @@ export async function startBookingCheckout(_r: any, args: any, context: any) {
     const quote = { ...h.quote, departureId: h.departureId };
     const participants = buildParticipants(quote, i.participants);
     const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: 'online', holdId: h.id, customerId: context.session?.itemId, status: 'pending_payment' });
-    await tx.inventoryHold.update({ where: { id: h.id }, data: { expiresAt: new Date(Date.now() + 15 * 60000) } });
+    await tx.inventoryHold.update({ where: { id: h.id }, data: { expiresAt: new Date(Math.max(h.expiresAt.getTime(), Date.now() + 15 * 60000)) } }); // a waitlist offer keeps its longer window
     const collection = await tx.paymentCollection.create({ data: { amount: quote.totalCents, description: 'default' } });
     await tx.booking.update({ where: { id: booking.id }, data: { paymentCollectionId: collection.id } });
     await tx.paymentSession.create({ data: { paymentCollectionId: collection.id, paymentProviderId: prov.id, amount: quote.totalCents, isSelected: true, idempotencyKey: createHash('sha256').update(`tour-checkout:${h.id}`).digest('hex'), data: { state: 'initializing' } } });
@@ -251,7 +253,7 @@ export async function issueRefund(prisma: any, a: { bookingId: string; amount: n
       else if (refunded > 0) data.status = refunded >= b.totalCents ? 'refunded' : 'partially_refunded';
       if (data.status === 'refunded' && !a.cancel) data.seats = b.seats;
       await tx.booking.update({ where: { id: b.id }, data });
-      if (a.cancel) { await tx.promoRedemption.updateMany({ where: { bookingId: b.id, status: 'committed' }, data: { status: 'released' } }); await refreshDepartureStatus(tx, b.departureId); }
+      if (a.cancel) { await tx.promoRedemption.updateMany({ where: { bookingId: b.id, status: 'committed' }, data: { status: 'released' } }); await refreshDepartureStatus(tx, b.departureId); await promoteWaitlist(tx, b.departureId, a.actorId); }
       await audit(tx, a.actorId, a.cancel ? 'booking.cancelled' : 'booking.refunded', 'Booking', b.id, { status: b.status, refundedCents: b.refundedCents }, data, a.reason, a.key);
     } else await audit(tx, a.actorId, 'refund.unresolved', 'Refund', refund.id, null, { status: outcome.status }, 'Reconcile with the provider before retrying', a.key);
     return refund ? tx.refund.findUnique({ where: { id: refund.id } }) : { status: 'succeeded', amount: 0 };
@@ -309,6 +311,7 @@ export async function cancelDepartureCore(prisma: any, actorId: string, i: any, 
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h: any) => h.id) }, status: 'reserved' }, data: { status: 'released' } });
       await tx.booking.updateMany({ where: { departureId: d.id, status: 'pending_payment' }, data: { status: 'cancelled' } });
       await tx.guideAssignment.updateMany({ where: { departureId: d.id, status: { in: ['offered', 'accepted'] } }, data: { status: 'cancelled' } });
+      await closeWaitlist(tx, d.id, 'Departure cancelled');
       await audit(tx, actorId, 'departure.cancelled', 'Departure', d.id, { status: d.status }, { status }, i.reason, requestKey);
     }
     return (await tx.booking.findMany({ where: { departureId: d.id, status: { in: ['confirmed', 'checked_in', 'partially_refunded'] } }, select: { id: true } })).map((b: any) => b.id);
@@ -403,9 +406,13 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
       }
       if (d.startAt.getTime() - d.bookingCutoffMinutes * 60000 <= Date.now()) { await tx.departure.update({ where: { id: d.id }, data: { status: 'closed' } }); closed++; }
     }
+    // Seats freed by lapsed holds or offers go to the waitlist.
+    let waitlistOffers = 0;
+    const waitingOn = await tx.waitlistEntry.findMany({ where: { status: { in: ['waiting', 'offered'] }, departure: { startAt: { gt: new Date() } } }, select: { departureId: true }, distinct: ['departureId'], take: 200 });
+    for (const { departureId } of waitingOn) { await lockTransactionKey(tx, `departure:${departureId}`); waitlistOffers += (await promoteWaitlist(tx, departureId, user.id)).offered; }
     const { reminders, suppressedReminders } = await queueDayBeforeReminders(tx, user.id);
-    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders });
-    return { tasks, closed, reminders, suppressedReminders };
+    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders, waitlistOffers });
+    return { tasks, closed, reminders, suppressedReminders, waitlistOffers };
   });
 }
 

@@ -77,3 +77,21 @@ export async function manageReschedule(bookingRef: string, token: string, depart
   const r = await call<{ rescheduleManagedBooking: any }>(`mutation($r:String!,$t:String!,$d:ID!,$k:String!){ rescheduleManagedBooking(bookingRef:$r, token:$t, departureId:$d, idempotencyKey:$k) }`, { r: bookingRef, t: token, d: departureId, k: key })
   return r.ok ? { ok: true as const, result: r.data.rescheduleManagedBooking } : r
 }
+export async function joinWaitlist(input: { departureId: string; tickets: { id: string; qty: number }[]; lead: { name: string; email: string; phone?: string } }, key: string) {
+  const r = await call<{ joinWaitlist: any }>(`mutation($i:WaitlistJoinInput!,$k:String!){ joinWaitlist(input:$i, idempotencyKey:$k) }`, { i: input, k: key })
+  return r.ok ? { ok: true as const, entry: r.data.joinWaitlist } : r
+}
+export async function waitlistStatus(entryId: string, token: string) {
+  const r = await call<{ waitlistStatus: any }>(`query($e:ID!,$t:String!){ waitlistStatus(entryId:$e, token:$t) }`, { e: entryId, t: token })
+  return r.ok ? { ok: true as const, entry: r.data.waitlistStatus } : r
+}
+// Binds the offer's held seats to this browser's checkout proof, then the normal checkout page takes over.
+export async function claimWaitlistOffer(entryId: string, token: string) {
+  const cartToken = await proof()
+  const r = await call<{ claimWaitlistOffer: any }>(`mutation($e:ID!,$t:String!,$c:String!){ claimWaitlistOffer(entryId:$e, token:$t, cartToken:$c) }`, { e: entryId, t: token, c: cartToken })
+  return r.ok ? { ok: true as const, result: r.data.claimWaitlistOffer } : r
+}
+export async function leaveWaitlist(entryId: string, token: string, key: string) {
+  const r = await call<{ leaveWaitlist: any }>(`mutation($e:ID!,$t:String!,$k:String!){ leaveWaitlist(entryId:$e, token:$t, idempotencyKey:$k) }`, { e: entryId, t: token, k: key })
+  return r.ok ? { ok: true as const } : r
+}

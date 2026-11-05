@@ -4,7 +4,7 @@ import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, timeIn } from '../../lib/format'
 import { getGuestNotifications, getNotificationDepartures } from '../actions/notifications'
 
-const KIND: Record<string, string> = { booking_confirmation: 'Booking confirmation', day_before_reminder: 'Day-before reminder', weather_cancellation: 'Weather cancellation' }
+const KIND: Record<string, string> = { booking_confirmation: 'Booking confirmation', day_before_reminder: 'Day-before reminder', weather_cancellation: 'Weather cancellation', waitlist_offer: 'Waitlist offer' }
 const field = 'h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm'
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || ''
 const dayStart = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(`${d}T00:00:00-05:00`).toISOString() : '')

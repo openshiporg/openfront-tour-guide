@@ -4,6 +4,7 @@ import { applyPricingRules } from '../lib/tour-pricing';
 import { refundPolicyAmount } from '../lib/tour-money';
 import { manageLinkPath, describePolicy, samePrice, selfServiceWindow } from '../lib/tour-self-service';
 import { issueRefund, refreshDepartureStatus } from './tour-checkout';
+import { promoteWaitlist } from './tour-waitlist';
 
 // Guest self-service behind a manage link. The proof is an HMAC of the booking id that only the server can compute
 // (derivedToken('manage', id)); nothing is stored, and the token travels in the URL fragment and in request bodies only.
@@ -150,6 +151,7 @@ async function moveInTx(tx: any, b0: any, targetId: string, o: { actorId: string
   if (moved.count !== 1) throw new Error('This booking has already been changed');
   if (old.holdId) await tx.inventoryHold.update({ where: { id: old.holdId }, data: { departureId: target.id } });
   await refreshDepartureStatus(tx, old.departureId); await refreshDepartureStatus(tx, target.id);
+  await promoteWaitlist(tx, old.departureId, o.actorId);
   await audit(tx, o.actorId, o.action, 'Booking', old.id, { departureId: old.departureId, startAt: b0.departure.startAt }, { departureId: target.id, startAt: target.startAt, totalCents: b0.totalCents }, o.reason, o.requestId);
   return { bookingRef: b0.bookingRef, previousStartAt: b0.departure.startAt, startAt: target.startAt, manageToken: manageToken(old.id, old.manageTokenVersion || 0) };
 }

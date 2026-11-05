@@ -3,6 +3,7 @@ import { assertDepartureAccess } from '../lib/tour-scope';
 import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { settlement } from '../lib/tour-money';
+import { promoteWaitlist } from './tour-waitlist';
 
 export async function generateDepartures(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures');
@@ -100,7 +101,10 @@ export async function resizeDeparture(_r: any, args: any, context: any) {
     const assignments = await tx.resourceAssignment.findMany({ where: { departureId: i.departureId }, include: { resource: true } });
     if (assignments.length && i.capacity > assignments.reduce((n: number,a: any) => n + a.quantity * a.resource.seats,0)) throw new Error('Capacity exceeds resource seats');
     const result = await tx.departure.update({ where: { id: i.departureId }, data: { capacity: i.capacity } });
-    await audit(tx, context.session.itemId, 'departure.resized', 'Departure', i.departureId, { capacity: o.departure.capacity }, { capacity: i.capacity }); return result;
+    await audit(tx, context.session.itemId, 'departure.resized', 'Departure', i.departureId, { capacity: o.departure.capacity }, { capacity: i.capacity });
+    // Added seats go to the waitlist first (Gym classCapacity rule).
+    if (i.capacity > o.departure.capacity) await promoteWaitlist(tx, i.departureId, context.session.itemId);
+    return result;
   });
 }
 export async function checkInParticipant(_r: any, args: any, context: any) {

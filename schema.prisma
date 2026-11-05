@@ -267,6 +267,7 @@ model Departure {
   holds                InventoryHold[]      @relation("InventoryHold_departure")
   bookings             Booking[]            @relation("Booking_departure")
   tasks                OperationalTask[]    @relation("OperationalTask_departure")
+  waitlist             WaitlistEntry[]      @relation("WaitlistEntry_departure")
   notes                String               @default("")
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @default(now()) @updatedAt
@@ -588,6 +589,30 @@ model NotificationPreference {
   updatedAt           DateTime @default(now()) @updatedAt
 }
 
+model WaitlistEntry {
+  id             String                   @id @default(cuid())
+  departure      Departure?               @relation("WaitlistEntry_departure", fields: [departureId], references: [id])
+  departureId    String?                  @map("departure")
+  guestName      String                   @default("")
+  guestEmail     String                   @default("")
+  guestPhone     String                   @default("")
+  seats          Int
+  tickets        Json?
+  source         WaitlistEntrySourceType? @default(online)
+  status         WaitlistEntryStatusType? @default(waiting)
+  offerHoldId    String                   @default("")
+  offeredAt      DateTime?
+  offerExpiresAt DateTime?
+  bookingRef     String                   @default("")
+  note           String                   @default("")
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @default(now()) @updatedAt
+
+  @@index([departureId])
+  @@index([guestEmail])
+  @@index([offerHoldId])
+}
+
 model StoreSettings {
   id                           String   @id @default(cuid())
   name                         String   @default("")
@@ -595,6 +620,7 @@ model StoreSettings {
   address                      String   @default("")
   currencyCode                 String   @default("USD")
   refundApprovalThresholdCents Int?     @default(10000)
+  waitlistOfferHours           Int?     @default(12)
   taxBps                       Int?     @default(0)
   settingsKey                  String   @unique @default("operator")
   createdAt                    DateTime @default(now())
@@ -984,6 +1010,19 @@ enum ChannelStatementStatusType {
 enum OperationalTaskStatusType {
   open
   resolved
+}
+
+enum WaitlistEntrySourceType {
+  online
+  phone
+}
+
+enum WaitlistEntryStatusType {
+  waiting
+  offered
+  converted
+  expired
+  withdrawn
 }
 
 enum PromoCodeDiscountTypeType {

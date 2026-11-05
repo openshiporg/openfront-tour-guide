@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
+import { ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -13,6 +13,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Today', href: '/platform/today', description: 'Departures today with seats, staffing and waiver gaps.', icon: CalendarClock, group: 'standalone' },
   { title: 'Calendar', href: '/platform/calendar', description: 'Week grid of departures by tour.', icon: CalendarDays, group: 'standalone' },
   { title: 'Bookings', href: '/platform/bookings', description: 'Bookings by status, phone and walk-up sales, refunds.', icon: Ticket, group: 'standalone' },
+  { title: 'Waitlist', href: '/platform/waitlist', description: 'Guests waiting for full departures; held offers.', icon: ListOrdered, group: 'standalone' },
   { title: 'My departures', href: '/platform/my-departures', description: 'Your accepted departures, manifests and pickup sheets.', icon: CalendarCheck, group: 'operations' },
   { title: 'Check-in', href: '/platform/check-in', description: 'Mobile manifest and check-in.', icon: ClipboardCheck, group: 'standalone' },
   { title: 'Tours', href: '/platform/tours', description: 'Tours, ticket types, add-ons, schedules and policies.', icon: Compass, group: 'catalog' },
