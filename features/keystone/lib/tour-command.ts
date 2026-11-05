@@ -10,6 +10,9 @@ export const humanCode = (length = 10) => Array.from(randomBytes(length), b => A
 const secret = () => { const s = process.env.SESSION_SECRET; if (!s || s.length < 32) throw new Error('SESSION_SECRET of at least 32 characters is required'); return s; };
 // Derived links are recomputable by the server only; the participant/booking id alone is never proof.
 export const derivedToken = (purpose: string, id: string) => createHmac('sha256', secret()).update(`${purpose}\0${id}`).digest('base64url');
+// The guest manage link. Version 0 is the original token (id only), so links already sent keep working; every operator reset bumps the
+// version, which changes the HMAC input and so kills every earlier link for that one booking without touching any other booking.
+export const manageToken = (bookingId: string, version = 0) => derivedToken('manage', version ? `${bookingId}\0v${version}` : bookingId);
 export function assertProof(token: string, hash: string) { const actual = hashToken(token || ''); if (!hash || actual.length !== hash.length || !timingSafeEqual(Buffer.from(actual), Buffer.from(hash))) throw new Error('Booking not found'); }
 export async function authorize(context: any, capability: Permission) {
   if (!context.session?.itemId || !permissions[capability]({ session: context.session })) throw new Error('Not authorized');

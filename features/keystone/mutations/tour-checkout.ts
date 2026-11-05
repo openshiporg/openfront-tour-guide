@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, lockTransactionKey, departureOccupancy, occupancyNumbers, userFacingError } from '../lib/tour-command';
+import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, manageToken, lockTransactionKey, departureOccupancy, occupancyNumbers, userFacingError } from '../lib/tour-command';
 import { notificationAfter, notificationRequestId, REMINDER_WINDOW_MS, type NotificationKind } from '../lib/tour-notifications';
 import { fastOperatorBooking } from './tour-operator-booking';
 import { placeHold } from './tour-catalog';
@@ -180,7 +180,7 @@ async function bookingView(prisma: any, booking: any) {
   const full = await prisma.booking.findUnique({ where: { id: booking.id }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true, checkInStatus: true } } } });
   const meeting = full.departure?.tour?.meetingPoint;
   return {
-    bookingRef: full.bookingRef, manageToken: derivedToken('manage', full.id), status: full.status, totalCents: full.totalCents, refundedCents: full.refundedCents, currencyCode: full.currencyCode, seats: full.seats,
+    bookingRef: full.bookingRef, manageToken: manageToken(full.id, full.manageTokenVersion), status: full.status, totalCents: full.totalCents, refundedCents: full.refundedCents, currencyCode: full.currencyCode, seats: full.seats,
     tourName: full.tourSnapshot?.name || full.departure?.tour?.name, startAt: full.departure?.startAt, endAt: full.departure?.endAt, timezone: full.tourSnapshot?.timezone,
     meetingPoint: meeting ? { name: meeting.name, address: meeting.address, instructions: meeting.instructions, mapLink: meeting.mapLink } : full.tourSnapshot?.meetingPoint || null,
     lines: full.lines.map((l: any) => ({ name: l.name, qty: l.qty, unitPriceCents: l.unitPriceCents, kind: l.kind })),

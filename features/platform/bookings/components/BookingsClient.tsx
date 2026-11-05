@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, money, timeIn } from '../../lib/format'
-import { refundAction, requestApprovalAction } from '../actions/bookings'
+import { refundAction, requestApprovalAction, resetGuestLinkAction } from '../actions/bookings'
 
 import { STATUSES } from '../statuses'
 
@@ -18,6 +18,18 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
   const [notice, setNotice] = React.useState<string | null>(null)
   const [amount, setAmount] = React.useState('')
   const [reason, setReason] = React.useState('')
+  const [newLink, setNewLink] = React.useState<{ ref: string; url: string } | null>(null)
+  const [linkReason, setLinkReason] = React.useState('')
+  const [resetting, setResetting] = React.useState<string | null>(null)
+  const [copied, setCopied] = React.useState(false)
+  const resetLink = async (b: any) => {
+    setError(null); setNotice(null); setNewLink(null); setCopied(false); setResetting(b.id)
+    try {
+      const r: any = await resetGuestLinkAction(b.id, linkReason.trim())
+      if (r.success) { setLinkReason(''); setNewLink({ ref: b.bookingRef, url: `${window.location.origin}${r.link}` }) } else setError(r.error || 'Could not reset the link')
+    } catch { setError('Could not reset the link') } finally { setResetting(null) }
+  }
+  const copyLink = async () => { if (!newLink) return; try { await navigator.clipboard.writeText(newLink.url); setCopied(true) } catch { setCopied(false) } }
   const refund = async (b: any, cancel: boolean) => {
     setError(null); setNotice(null)
     const cents = Math.round(Number(amount || (b.totalCents - b.refundedCents) / 100) * 100)
@@ -45,6 +57,14 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
       </div></div>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       {notice && <p role="status" className="font-mono text-xs uppercase tracking-wide text-emerald-700">{notice}</p>}
+      {newLink && (
+        <div role="status" className="space-y-2 rounded-xl border p-3 text-sm" data-new-link>
+          <p className="font-mono text-xs uppercase tracking-wide text-emerald-700">Guest link reset · {newLink.ref}</p>
+          <p>The old link no longer works. Give the guest this one:</p>
+          <p className="break-all font-mono">{newLink.url}</p>
+          <Button size="sm" variant="outline" onClick={copyLink}>{copied ? 'Copied' : 'Copy link'}</Button>
+        </div>
+      )}
       <ul className="space-y-2">
         {rows.map((b) => (
           <li key={b.id} className="rounded-xl border p-3">
@@ -54,6 +74,17 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="font-mono">{money(b.totalCents, b.currencyCode)}{b.refundedCents ? ` (−${money(b.refundedCents, b.currencyCode)})` : ''} · {b.seats} seats · {b.source}</span>
+              <span className="flex flex-wrap gap-2">
+              {b.status === 'confirmed' && b.source !== 'reseller' && (
+                <Popover>
+                  <PopoverTrigger asChild><Button size="sm" variant="outline">Reset guest link</Button></PopoverTrigger>
+                  <PopoverContent className="w-72 space-y-2">
+                    <p className="text-sm text-muted-foreground">The current manage link for {b.bookingRef} stops working at once. You get a new one to give the guest.</p>
+                    <Input placeholder="Reason" value={linkReason} onChange={(e) => setLinkReason(e.target.value)} />
+                    <Button size="sm" className="w-full" disabled={!linkReason.trim() || resetting === b.id} onClick={() => resetLink(b)}>{resetting === b.id ? 'Resetting…' : 'Reset link'}</Button>
+                  </PopoverContent>
+                </Popover>
+              )}
               {['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'].includes(b.status) && (
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline">Refund</Button></PopoverTrigger>
@@ -66,6 +97,7 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
                   </PopoverContent>
                 </Popover>
               )}
+              </span>
             </div>
           </li>
         ))}

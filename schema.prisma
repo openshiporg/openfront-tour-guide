@@ -429,6 +429,7 @@ model Booking {
   statementId            String?            @map("statement")
   rebookCreditHash       String?            @unique
   creditUsedAt           DateTime?
+  manageTokenVersion     Int?               @default(0)
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @default(now()) @updatedAt
 

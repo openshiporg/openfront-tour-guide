@@ -1,23 +1,25 @@
 import { timingSafeEqual } from 'node:crypto';
-import { command, audit, derivedToken, occupancyNumbers, userFacingError } from '../lib/tour-command';
+import { command, audit, authorize, manageToken, occupancyNumbers, userFacingError } from '../lib/tour-command';
 import { applyPricingRules } from '../lib/tour-pricing';
 import { refundPolicyAmount } from '../lib/tour-money';
-import { describePolicy, samePrice, selfServiceWindow } from '../lib/tour-self-service';
+import { manageLinkPath, describePolicy, samePrice, selfServiceWindow } from '../lib/tour-self-service';
 import { issueRefund, refreshDepartureStatus } from './tour-checkout';
 
 // Guest self-service behind a manage link. The proof is an HMAC of the booking id that only the server can compute
 // (derivedToken('manage', id)); nothing is stored, and the token travels in the URL fragment and in request bodies only.
 const OPEN_FOR_SALE = ['on_sale', 'confirmed', 'min_not_met'];
 const norm = (s: string) => String(s || '').trim().toUpperCase();
-export const manageToken = (bookingId: string) => derivedToken('manage', bookingId);
+export { manageToken };
 function assertManageProof(booking: any, token: string) {
-  const expected = Buffer.from(manageToken(booking.id)), given = Buffer.from(String(token || ''));
+  const expected = Buffer.from(manageToken(booking.id, booking.manageTokenVersion || 0)), given = Buffer.from(String(token || ''));
   if (!booking || given.length !== expected.length || !timingSafeEqual(expected, given)) throw new Error('Booking not found');
 }
 async function load(db: any, args: any) {
   const booking = await db.booking.findUnique({ where: { bookingRef: norm(args.bookingRef) }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true } } } });
   if (!booking) throw new Error('Booking not found');
   assertManageProof(booking, args.token);
+  // A valid link stops working when the departure has ended (checked after the proof, so a wrong token learns nothing).
+  if (booking.departure.endAt.getTime() <= Date.now()) throw new Error('This link has expired. The departure has ended.');
   return booking;
 }
 const stage = (b: any, window: { open: boolean }) => !['confirmed'].includes(b.status) ? { can: false, why: b.status === 'cancelled' || b.status === 'refunded' ? 'This booking is cancelled.' : 'This booking can no longer be changed online. Contact the operator.' }
@@ -138,7 +140,30 @@ export async function rescheduleManagedBooking(_r: any, args: any, context: any)
       if (old.holdId) await tx.inventoryHold.update({ where: { id: old.holdId }, data: { departureId: target.id } });
       await refreshDepartureStatus(tx, old.departureId); await refreshDepartureStatus(tx, target.id);
       await audit(tx, null, 'booking.self_rescheduled', 'Booking', old.id, { departureId: old.departureId, startAt: b0.departure.startAt }, { departureId: target.id, startAt: target.startAt, totalCents: b0.totalCents }, 'Guest rescheduled via manage link at the same price', args.idempotencyKey);
-      return { bookingRef: b0.bookingRef, previousStartAt: b0.departure.startAt, startAt: target.startAt, manageToken: manageToken(old.id) };
+      return { bookingRef: b0.bookingRef, previousStartAt: b0.departure.startAt, startAt: target.startAt, manageToken: manageToken(old.id, old.manageTokenVersion || 0) };
+    });
+  } catch (e) { throw userFacingError(e); }
+}
+
+// Operator "Reset guest link": bumps the booking's token version so the old link (and any copy of it) stops working at once, and returns the
+// new path for the operator to give to the guest. One booking only. Audited with who did it and why; a retry with the same key returns the same link.
+export async function resetGuestLink(_r: any, args: any, context: any) {
+  try {
+    const user = await authorize(context, 'canManageBookings'); const i = args.input || {};
+    const reason = String(i.reason || '').trim();
+    if (!reason) throw new Error('A reason is required');
+    const booking = await context.prisma.booking.findUnique({ where: { id: String(i.bookingId || '') }, select: { id: true, bookingRef: true, departureId: true } });
+    if (!booking) throw new Error('Booking not found');
+    return await command(context, args.idempotencyKey, 'resetGuestLink', { bookingId: booking.id, reason }, [`departure:${booking.departureId}`], async tx => {
+      const cur = await tx.booking.findUnique({ where: { id: booking.id }, select: { status: true, channelId: true, manageTokenVersion: true } });
+      if (cur.status !== 'confirmed') throw new Error('Only a confirmed booking has a guest link to reset');
+      if (cur.channelId) throw new Error('Reseller bookings are changed through the reseller');
+      const from = cur.manageTokenVersion || 0;
+      // Compare-and-set on the version read under the departure lock.
+      const bumped = await tx.booking.updateMany({ where: { id: booking.id, OR: [{ manageTokenVersion: from }, ...(from === 0 ? [{ manageTokenVersion: null }] : [])] }, data: { manageTokenVersion: from + 1 } });
+      if (bumped.count !== 1) throw new Error('The link was reset by someone else. Reload and try again');
+      await audit(tx, user.id, 'booking.guest_link_reset', 'Booking', booking.id, { version: from }, { version: from + 1 }, reason, args.idempotencyKey);
+      return { bookingRef: booking.bookingRef, version: from + 1, link: manageLinkPath(booking.bookingRef, manageToken(booking.id, from + 1)) };
     });
   } catch (e) { throw userFacingError(e); }
 }

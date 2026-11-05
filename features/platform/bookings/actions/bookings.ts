@@ -38,6 +38,10 @@ export async function refundAction(bookingId: string, amountCents: number, reaso
   return result
 }
 
+export async function resetGuestLinkAction(bookingId: string, reason: string) {
+  const result = await platformMutation(`mutation($input:ResetGuestLinkInput!,$idempotencyKey:String!){ resetGuestLink(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { bookingId, reason } })
+  return result.success ? { success: true as const, link: String((result.data as any)?.resetGuestLink?.link || '') } : result
+}
 export async function getRefundThreshold() {
   const data = await platformQuery<{ storeSettingsItems: { refundApprovalThresholdCents: number | null }[] }>(`query{ storeSettingsItems(take:1){ refundApprovalThresholdCents } }`)
   return data?.storeSettingsItems?.[0]?.refundApprovalThresholdCents ?? 10000

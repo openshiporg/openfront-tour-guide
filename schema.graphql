@@ -2474,6 +2474,7 @@ type Booking {
   statement: ChannelStatement
   rebookCreditHash: String
   creditUsedAt: DateTime
+  manageTokenVersion: Int
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -2541,6 +2542,7 @@ input BookingWhereInput {
   statement: ChannelStatementWhereInput
   rebookCreditHash: StringNullableFilter
   creditUsedAt: DateTimeNullableFilter
+  manageTokenVersion: IntNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2612,6 +2614,7 @@ input BookingOrderByInput {
   pickupLocation: OrderDirection
   rebookCreditHash: OrderDirection
   creditUsedAt: OrderDirection
+  manageTokenVersion: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2651,6 +2654,7 @@ input BookingUpdateInput {
   statement: ChannelStatementRelateToOneForUpdateInput
   rebookCreditHash: String
   creditUsedAt: DateTime
+  manageTokenVersion: Int
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -2754,6 +2758,7 @@ input BookingCreateInput {
   statement: ChannelStatementRelateToOneForCreateInput
   rebookCreditHash: String
   creditUsedAt: DateTime
+  manageTokenVersion: Int
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -5146,6 +5151,7 @@ type Mutation {
   resizeDeparture(input: ResizeDepartureInput!, idempotencyKey: String!): JSON
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
+  resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
   cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
   exportSalesCsv(input: SalesReportInput!): JSON
   captureWaiverOnSite(input: CaptureWaiverInput!, idempotencyKey: String!): JSON
@@ -5623,6 +5629,11 @@ input ParticipantActionInput {
 
 input BookingActionInput {
   bookingId: ID!
+}
+
+input ResetGuestLinkInput {
+  bookingId: ID!
+  reason: String
 }
 
 input CloseDepartureInput {
