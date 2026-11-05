@@ -120,28 +120,67 @@ export async function rescheduleManagedBooking(_r: any, args: any, context: any)
     const db = context.prisma, b0 = await load(db, args);
     const targetId = String(args.departureId || '');
     if (!targetId) throw new Error('Choose a departure');
-    return await command(context, args.idempotencyKey, 'rescheduleManagedBooking', { bookingId: b0.id, departureId: targetId }, [`departure:${b0.departureId}`, `departure:${targetId}`], async (tx: any) => {
-      const old = await tx.booking.findUnique({ where: { id: b0.id }, select: { id: true, status: true, departureId: true, seats: true, channelId: true, holdId: true, tourSnapshot: true } });
-      // Replay of a committed move with a new key lands here as "already there": harmless, and a different target is judged on its own merits.
-      if (old.departureId === targetId) throw new Error('Choose a different departure');
-      const st = stage({ status: old.status, channelId: old.channelId }, selfServiceWindow(b0.departure.startAt, b0.departure.bookingCutoffMinutes));
-      if (!st.can) throw new Error(st.why);
-      if (old.departureId !== b0.departureId) throw new Error('This booking has already been changed');
-      const target = await tx.departure.findUnique({ where: { id: targetId }, include: { tour: true } });
-      if (!target || target.tourId !== b0.departure.tourId) throw new Error('Choose a departure of the same tour');
-      if (target.tour.status !== 'active' || !OPEN_FOR_SALE.includes(target.status) || !selfServiceWindow(target.startAt, target.bookingCutoffMinutes).open) throw new Error('That departure is not open for booking');
-      const price = await priceOn(tx, b0, target);
-      if (!price || !samePrice(price, b0)) throw new Error('That departure is priced differently. Choose one at the same price, or cancel under the policy');
-      const o = await occupancyNumbers(tx, target.id, target.startAt);
-      if (Math.max(0, target.capacity - o.booked - o.held - o.allocated) < (old.seats || 1)) throw new Error('Not enough seats on that departure');
-      const snapshot = { ...(old.tourSnapshot || {}), startAt: target.startAt, endAt: target.endAt };
-      const moved = await tx.booking.updateMany({ where: { id: old.id, status: 'confirmed', departureId: old.departureId }, data: { departureId: target.id, tourSnapshot: snapshot } });
-      if (moved.count !== 1) throw new Error('This booking has already been changed');
-      if (old.holdId) await tx.inventoryHold.update({ where: { id: old.holdId }, data: { departureId: target.id } });
-      await refreshDepartureStatus(tx, old.departureId); await refreshDepartureStatus(tx, target.id);
-      await audit(tx, null, 'booking.self_rescheduled', 'Booking', old.id, { departureId: old.departureId, startAt: b0.departure.startAt }, { departureId: target.id, startAt: target.startAt, totalCents: b0.totalCents }, 'Guest rescheduled via manage link at the same price', args.idempotencyKey);
-      return { bookingRef: b0.bookingRef, previousStartAt: b0.departure.startAt, startAt: target.startAt, manageToken: manageToken(old.id, old.manageTokenVersion || 0) };
-    });
+    return await command(context, args.idempotencyKey, 'rescheduleManagedBooking', { bookingId: b0.id, departureId: targetId }, [`departure:${b0.departureId}`, `departure:${targetId}`], (tx: any) =>
+      moveInTx(tx, b0, targetId, { actorId: null, action: 'booking.self_rescheduled', reason: 'Guest rescheduled via manage link at the same price', requestId: args.idempotencyKey, guest: true }));
+  } catch (e) { throw userFacingError(e); }
+}
+
+// The move itself, shared by the guest link and the operator. Caller holds both departure locks. Guests are held to the CURRENT departure's
+// cutoff (self-service window); staff may move a booking until its departure starts. Both are held to the TARGET's booking cutoff and the same price.
+async function moveInTx(tx: any, b0: any, targetId: string, o: { actorId: string | null; action: string; reason: string; requestId: string; guest: boolean }) {
+  const old = await tx.booking.findUnique({ where: { id: b0.id }, select: { id: true, status: true, departureId: true, seats: true, channelId: true, holdId: true, tourSnapshot: true, manageTokenVersion: true } });
+  // Replay of a committed move with a new key lands here as "already there": harmless, and a different target is judged on its own merits.
+  if (old.departureId === targetId) throw new Error('Choose a different departure');
+  if (o.guest) { const st = stage({ status: old.status, channelId: old.channelId }, selfServiceWindow(b0.departure.startAt, b0.departure.bookingCutoffMinutes)); if (!st.can) throw new Error(st.why); }
+  else {
+    if (old.status !== 'confirmed') throw new Error('Only a confirmed booking can be moved');
+    if (old.channelId) throw new Error('Reseller bookings are changed through the reseller');
+    if (b0.departure.startAt.getTime() <= Date.now()) throw new Error('This departure has started. It can no longer be moved');
+  }
+  if (old.departureId !== b0.departureId) throw new Error('This booking has already been changed');
+  const target = await tx.departure.findUnique({ where: { id: targetId }, include: { tour: true } });
+  if (!target || target.tourId !== b0.departure.tourId) throw new Error('Choose a departure of the same tour');
+  if (target.tour.status !== 'active' || !OPEN_FOR_SALE.includes(target.status) || !selfServiceWindow(target.startAt, target.bookingCutoffMinutes).open) throw new Error('That departure is not open for booking');
+  const price = await priceOn(tx, b0, target);
+  if (!price || !samePrice(price, b0)) throw new Error(o.guest ? 'That departure is priced differently. Choose one at the same price, or cancel under the policy' : 'That departure is priced differently. Choose one at the same price, or refund and book again');
+  const occ = await occupancyNumbers(tx, target.id, target.startAt);
+  if (Math.max(0, target.capacity - occ.booked - occ.held - occ.allocated) < (old.seats || 1)) throw new Error('Not enough seats on that departure');
+  const snapshot = { ...(old.tourSnapshot || {}), startAt: target.startAt, endAt: target.endAt };
+  const moved = await tx.booking.updateMany({ where: { id: old.id, status: 'confirmed', departureId: old.departureId }, data: { departureId: target.id, tourSnapshot: snapshot } });
+  if (moved.count !== 1) throw new Error('This booking has already been changed');
+  if (old.holdId) await tx.inventoryHold.update({ where: { id: old.holdId }, data: { departureId: target.id } });
+  await refreshDepartureStatus(tx, old.departureId); await refreshDepartureStatus(tx, target.id);
+  await audit(tx, o.actorId, o.action, 'Booking', old.id, { departureId: old.departureId, startAt: b0.departure.startAt }, { departureId: target.id, startAt: target.startAt, totalCents: b0.totalCents }, o.reason, o.requestId);
+  return { bookingRef: b0.bookingRef, previousStartAt: b0.departure.startAt, startAt: target.startAt, manageToken: manageToken(old.id, old.manageTokenVersion || 0) };
+}
+
+async function loadForStaff(db: any, bookingId: string) {
+  const b = await db.booking.findUnique({ where: { id: String(bookingId || '') }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true } } } });
+  if (!b) throw new Error('Booking not found');
+  return b;
+}
+
+// Operator read for the Move popover: departures this booking can move to (same tour, same price, room for the party, target still open).
+export async function bookingMoveOptions(_r: any, args: any, context: any) {
+  try {
+    await authorize(context, 'canManageBookings');
+    const db = context.prisma, b = await loadForStaff(db, args.bookingId);
+    if (b.status !== 'confirmed' || b.channelId || b.departure.startAt.getTime() <= Date.now()) return { bookingRef: b.bookingRef, canMove: false, options: [] };
+    return { bookingRef: b.bookingRef, canMove: true, options: await options(db, b) };
+  } catch (e) { throw userFacingError(e); }
+}
+
+// Operator "Move": a guest calls to change the date. The same in-place move as the guest link (same booking, payment, participants, waivers
+// and link), allowed until the current departure starts, audited with the staff member and a required reason, replay-safe by key.
+export async function moveBooking(_r: any, args: any, context: any) {
+  try {
+    const user = await authorize(context, 'canManageBookings'); const i = args.input || {};
+    const reason = String(i.reason || '').trim(), targetId = String(i.departureId || '');
+    if (!reason) throw new Error('A reason is required');
+    if (!targetId) throw new Error('Choose a departure');
+    const b0 = await loadForStaff(context.prisma, i.bookingId);
+    return await command(context, args.idempotencyKey, 'moveBooking', { bookingId: b0.id, departureId: targetId, reason }, [`departure:${b0.departureId}`, `departure:${targetId}`], (tx: any) =>
+      moveInTx(tx, b0, targetId, { actorId: user.id, action: 'booking.moved', reason, requestId: args.idempotencyKey, guest: false }));
   } catch (e) { throw userFacingError(e); }
 }
 

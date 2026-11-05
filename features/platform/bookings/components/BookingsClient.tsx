@@ -11,6 +11,7 @@ import { dayIn, money, timeIn } from '../../lib/format'
 import { refundAction, requestApprovalAction, resetGuestLinkAction } from '../actions/bookings'
 
 import { STATUSES } from '../statuses'
+import { MoveBooking } from './MoveBooking'
 
 export function BookingsClient({ rows, counts, active, thresholdCents }: { rows: any[]; counts: Record<string, number>; active: string | null; thresholdCents: number }) {
   const router = useRouter()
@@ -75,6 +76,9 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="font-mono">{money(b.totalCents, b.currencyCode)}{b.refundedCents ? ` (−${money(b.refundedCents, b.currencyCode)})` : ''} · {b.seats} seats · {b.source}</span>
               <span className="flex flex-wrap gap-2">
+              {b.status === 'confirmed' && b.source !== 'reseller' && b.departure && new Date(b.departure.startAt).getTime() > Date.now() && (
+                <MoveBooking booking={b} onDone={(m) => { setNewLink(null); if (m.kind === 'ok') { setError(null); setNotice(m.text) } else { setNotice(null); setError(m.text) } }} />
+              )}
               {b.status === 'confirmed' && b.source !== 'reseller' && (
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline">Reset guest link</Button></PopoverTrigger>

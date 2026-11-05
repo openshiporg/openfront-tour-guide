@@ -42,6 +42,15 @@ export async function resetGuestLinkAction(bookingId: string, reason: string) {
   const result = await platformMutation(`mutation($input:ResetGuestLinkInput!,$idempotencyKey:String!){ resetGuestLink(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { bookingId, reason } })
   return result.success ? { success: true as const, link: String((result.data as any)?.resetGuestLink?.link || '') } : result
 }
+export async function getMoveOptionsAction(bookingId: string) {
+  const data = await platformQuery<{ bookingMoveOptions: { canMove: boolean; options: { id: string; startAt: string; remaining: number }[] } }>(`query($bookingId:ID!){ bookingMoveOptions(bookingId:$bookingId) }`, { bookingId })
+  return data?.bookingMoveOptions || null
+}
+export async function moveBookingAction(bookingId: string, departureId: string, reason: string, idempotencyKey: string) {
+  const result = await platformMutation(`mutation($input:MoveBookingInput!,$idempotencyKey:String!){ moveBooking(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { bookingId, departureId, reason }, idempotencyKey })
+  revalidatePath('/dashboard/platform/bookings')
+  return result.success ? { success: true as const, startAt: String((result.data as any)?.moveBooking?.startAt || '') } : result
+}
 export async function getRefundThreshold() {
   const data = await platformQuery<{ storeSettingsItems: { refundApprovalThresholdCents: number | null }[] }>(`query{ storeSettingsItems(take:1){ refundApprovalThresholdCents } }`)
   return data?.storeSettingsItems?.[0]?.refundApprovalThresholdCents ?? 10000

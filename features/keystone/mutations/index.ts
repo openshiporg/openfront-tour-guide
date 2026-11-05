@@ -9,7 +9,7 @@ import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding'
 import { myDepartures, pickupSheet, dayPickupSheet } from './tour-guide-day';
 import { salesReport, exportSalesCsv } from './tour-reports';
 import { participantWaiver, captureWaiverOnSite } from './tour-waiver-capture';
-import { manageBooking, cancelManagedBooking, rescheduleManagedBooking, resetGuestLink } from './tour-self-service';
+import { manageBooking, cancelManagedBooking, rescheduleManagedBooking, resetGuestLink, moveBooking, bookingMoveOptions } from './tour-self-service';
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
 import { guestNotifications } from './tour-notification-queue';
 import { departuresInRange, departureManifest } from './tour-manifest';
@@ -49,6 +49,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input ParticipantActionInput { participantId: ID! }
       input BookingActionInput { bookingId: ID! }
       input ResetGuestLinkInput { bookingId: ID!, reason: String }
+      input MoveBookingInput { bookingId: ID!, departureId: ID!, reason: String! }
       input CloseDepartureInput { departureId: ID! }
       input ChannelStatementInput { channelId: ID!, from: String!, to: String! }
       input SettlementTransitionInput { id: ID!, status: String!, reference: String }
@@ -64,6 +65,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         tourAvailability(tourId: ID!, from: String!, to: String!): JSON
         lookupBooking(bookingRef: String!, email: String!): JSON
         manageBooking(bookingRef: String!, token: String!): JSON
+        bookingMoveOptions(bookingId: ID!): JSON
         operatorBookingByKey(idempotencyKey: String!): JSON
         weatherCancellations: JSON
         participantWaiver(participantId: ID!): JSON
@@ -91,6 +93,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
+        moveBooking(input: MoveBookingInput!, idempotencyKey: String!): JSON
         cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
         exportSalesCsv(input: SalesReportInput!): JSON
         captureWaiverOnSite(input: CaptureWaiverInput!, idempotencyKey: String!): JSON
@@ -111,10 +114,10 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { manageBooking, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
-        generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, resetGuestLink,
+        generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, resetGuestLink, moveBooking,
         transitionGuidePayout, transitionChannelStatement,
         cancelDeparture, captureWaiverOnSite, exportSalesCsv, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },
