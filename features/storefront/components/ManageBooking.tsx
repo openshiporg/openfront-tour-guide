@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { manage, manageCancel, manageReschedule } from '../lib/data'
 import { money, when } from '../lib/format'
 import { parseManageHash } from '../../keystone/lib/tour-self-service'
+import { ChangeParty } from './ChangeParty'
 
 export function ManageBooking() {
   const [link, setLink] = React.useState<{ bookingRef: string; token: string } | null | undefined>(undefined)
@@ -72,6 +73,7 @@ export function ManageBooking() {
               </>
             )}
           </section>
+          <ChangeParty key={`${b.seats}:${b.totalCents}`} link={link} booking={b} onDone={async (n) => { await load(link); setNote(n) }} />
           <section className="space-y-2 border-t pt-3" aria-label="Cancel">
             <h2 className="text-base font-semibold">Cancel</h2>
             <p className="text-sm">If you cancel now you will be refunded <span className="font-mono">{money(b.refundIfCancelledCents, b.currencyCode)}</span> of {money(b.totalCents - b.refundedCents, b.currencyCode)}.</p>

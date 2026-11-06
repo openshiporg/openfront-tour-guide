@@ -7,8 +7,9 @@ async function main() {
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
   const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example', 'depth-ui-move@test.example', 'depth-wl-ana@test.example', 'depth-wl-ben@test.example', 'depth-wl-cy@test.example'] } }, select: { id: true } });
+  const pcUi = await p.booking.findMany({ where: { guestEmail: { startsWith: 'depth-pc-' } }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
-  const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: uiBookings.map((b: any) => b.id) } }] }, select: { id: true } });
+  const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: [...uiBookings, ...pcUi].map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);
   const guides = await p.guide.findMany({ where: { name: { startsWith: 'depth-' } }, select: { id: true } });
   const gIds = guides.map((g: any) => g.id);
@@ -23,17 +24,25 @@ async function main() {
   console.log({ tours: tourIds.length, deps: depIds.length, bookings: bIds.length, guides: gIds.length, channels: cIds.length, roles: roles.length, users: users.length, assignments: assignments.length, statements: statements.length, payouts: payouts.length });
   if (!apply) return;
   await p.$transaction(async (tx: any) => {
-    const parts = await tx.participant.findMany({ where: { bookingId: { in: bIds } }, select: { id: true } });
+    // Party changes: removed people are detached (bookingId null) but named in the change plan; their rows go too.
+    const changes = await tx.partyChange.findMany({ where: { bookingId: { in: bIds } }, select: { id: true, plan: true, holdId: true } });
+    const detached = changes.flatMap((c: any) => (c.plan?.removed || []).map((r: any) => r.id));
+    await tx.auditEvent.deleteMany({ where: { targetList: 'PartyChange', targetId: { in: changes.map((c: any) => c.id) } } });
+    await tx.partyChange.deleteMany({ where: { id: { in: changes.map((c: any) => c.id) } } });
+    await tx.inventoryHold.deleteMany({ where: { id: { in: changes.map((c: any) => c.holdId).filter(Boolean) } } });
+    const parts = await tx.participant.findMany({ where: { OR: [{ bookingId: { in: bIds } }, { id: { in: detached }, bookingId: null }] }, select: { id: true } });
     await tx.waiverSignature.deleteMany({ where: { participantId: { in: parts.map((x: any) => x.id) } } });
     await tx.auditEvent.deleteMany({ where: { action: 'waiver.captured_on_site', targetId: { in: parts.map((x: any) => x.id) } } });
-    await tx.participant.deleteMany({ where: { bookingId: { in: bIds } } });
+    await tx.participant.deleteMany({ where: { id: { in: parts.map((x: any) => x.id) } } });
     await tx.bookingLine.deleteMany({ where: { bookingId: { in: bIds } } });
     const holdIds = (await tx.inventoryHold.findMany({ where: { departureId: { in: depIds } }, select: { id: true } })).map((h: any) => h.id);
     await tx.promoRedemption.deleteMany({ where: { OR: [{ bookingId: { in: bIds } }, { holdId: { in: holdIds } }] } });
     const pay = await tx.payment.findMany({ where: { orderId: { in: bIds } }, select: { id: true } });
     await tx.refund.deleteMany({ where: { paymentId: { in: pay.map((x: any) => x.id) } } });
     await tx.payment.deleteMany({ where: { orderId: { in: bIds } } });
+    const bookingHolds = (await tx.booking.findMany({ where: { id: { in: bIds } }, select: { holdId: true } })).map((b: any) => b.holdId).filter(Boolean);
     await tx.booking.deleteMany({ where: { id: { in: bIds } } });
+    await tx.inventoryHold.deleteMany({ where: { id: { in: bookingHolds } } });
     await tx.inventoryHold.deleteMany({ where: { departureId: { in: depIds } } });
     await tx.channelStatement.deleteMany({ where: { id: { in: statements.map((s: any) => s.id) } } });
     await tx.guideAssignment.deleteMany({ where: { id: { in: assignments.map((a: any) => a.id) } } });

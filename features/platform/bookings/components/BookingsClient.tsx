@@ -12,6 +12,7 @@ import { refundAction, requestApprovalAction, resetGuestLinkAction } from '../ac
 
 import { STATUSES } from '../statuses'
 import { MoveBooking } from './MoveBooking'
+import { ChangeParty } from './ChangeParty'
 
 export function BookingsClient({ rows, counts, active, thresholdCents }: { rows: any[]; counts: Record<string, number>; active: string | null; thresholdCents: number }) {
   const router = useRouter()
@@ -78,6 +79,9 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
               <span className="flex flex-wrap gap-2">
               {b.status === 'confirmed' && b.source !== 'reseller' && b.departure && new Date(b.departure.startAt).getTime() > Date.now() && (
                 <MoveBooking booking={b} onDone={(m) => { setNewLink(null); if (m.kind === 'ok') { setError(null); setNotice(m.text) } else { setNotice(null); setError(m.text) } }} />
+              )}
+              {b.status === 'confirmed' && b.source !== 'reseller' && b.departure && new Date(b.departure.startAt).getTime() > Date.now() && (
+                <ChangeParty booking={b} onDone={(m) => { setNewLink(null); if (m.kind === 'ok') { setError(null); setNotice(m.text) } else { setNotice(null); setError(m.text) } }} />
               )}
               {b.status === 'confirmed' && b.source !== 'reseller' && (
                 <Popover>

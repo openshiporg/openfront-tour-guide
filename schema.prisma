@@ -431,6 +431,7 @@ model Booking {
   rebookCreditHash       String?            @unique
   creditUsedAt           DateTime?
   manageTokenVersion     Int?               @default(0)
+  partyChanges           PartyChange[]      @relation("PartyChange_booking")
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @default(now()) @updatedAt
 
@@ -477,6 +478,30 @@ model InventoryHold {
   @@index([departureId])
   @@index([expiresAt])
   @@index([cartTokenHash])
+}
+
+model PartyChange {
+  id              String                 @id @default(cuid())
+  booking         Booking?               @relation("PartyChange_booking", fields: [bookingId], references: [id])
+  bookingId       String?                @map("booking")
+  source          PartyChangeSourceType? @default(guest)
+  status          PartyChangeStatusType? @default(pending_payment)
+  plan            Json?
+  differenceCents Int?                   @default(0)
+  collectCents    Int?                   @default(0)
+  refundCents     Int?                   @default(0)
+  keptCents       Int?                   @default(0)
+  currencyCode    String                 @default("USD")
+  holdId          String                 @default("")
+  paymentIntentId String                 @default("")
+  clientSecret    String                 @default("")
+  expiresAt       DateTime?
+  reason          String                 @default("")
+  requestKey      String                 @unique @default("")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @default(now()) @updatedAt
+
+  @@index([bookingId])
 }
 
 model Participant {
@@ -976,6 +1001,18 @@ enum InventoryHoldStatusType {
   converted
   released
   expired
+}
+
+enum PartyChangeSourceType {
+  guest
+  staff
+}
+
+enum PartyChangeStatusType {
+  pending_payment
+  applied
+  cancelled
+  failed
 }
 
 enum ParticipantWaiverStatusType {

@@ -15,15 +15,15 @@ function assertManageProof(booking: any, token: string) {
   const expected = Buffer.from(manageToken(booking.id, booking.manageTokenVersion || 0)), given = Buffer.from(String(token || ''));
   if (!booking || given.length !== expected.length || !timingSafeEqual(expected, given)) throw new Error('Booking not found');
 }
-async function load(db: any, args: any) {
-  const booking = await db.booking.findUnique({ where: { bookingRef: norm(args.bookingRef) }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true } } } });
+export async function load(db: any, args: any) {
+  const booking = await db.booking.findUnique({ where: { bookingRef: norm(args.bookingRef) }, include: { departure: { include: { tour: { include: { meetingPoint: true } } } }, lines: true, participants: { select: { id: true, fullName: true, waiverStatus: true, checkInStatus: true, ticketTypeSnapshot: true } } } });
   if (!booking) throw new Error('Booking not found');
   assertManageProof(booking, args.token);
   // A valid link stops working when the departure has ended (checked after the proof, so a wrong token learns nothing).
   if (booking.departure.endAt.getTime() <= Date.now()) throw new Error('This link has expired. The departure has ended.');
   return booking;
 }
-const stage = (b: any, window: { open: boolean }) => !['confirmed'].includes(b.status) ? { can: false, why: b.status === 'cancelled' || b.status === 'refunded' ? 'This booking is cancelled.' : 'This booking can no longer be changed online. Contact the operator.' }
+export const stage = (b: any, window: { open: boolean }) => !['confirmed'].includes(b.status) ? { can: false, why: b.status === 'cancelled' || b.status === 'refunded' ? 'This booking is cancelled.' : 'This booking can no longer be changed online. Contact the operator.' }
   : b.channelId ? { can: false, why: 'This booking was made through a reseller. Contact them or the operator to change it.' }
   : !window.open ? { can: false, why: 'Online changes closed before the start. Contact the operator.' } : { can: true, why: '' };
 
@@ -87,12 +87,19 @@ export async function manageBooking(_r: any, args: any, context: any) {
       bookingRef: b.bookingRef, status: b.status, guestName: b.guestName, totalCents: b.totalCents, refundedCents: b.refundedCents, currencyCode: b.currencyCode, seats: b.seats,
       tourName: b.tourSnapshot?.name || b.departure.tour.name, startAt: b.departure.startAt, timezone: b.tourSnapshot?.timezone || b.departure.tour.timezone,
       meetingPoint: mp ? { name: mp.name, address: mp.address, instructions: mp.instructions } : null,
-      lines: b.lines.map((l: any) => ({ name: l.name, qty: l.qty, kind: l.kind })), participants: b.participants.map((p: any) => ({ fullName: p.fullName, waiverStatus: p.waiverStatus })),
+      lines: b.lines.map((l: any) => ({ name: l.name, qty: l.qty, kind: l.kind })), participants: b.participants.map((p: any) => ({ id: p.id, fullName: p.fullName, waiverStatus: p.waiverStatus, ticket: p.ticketTypeSnapshot?.name || '' })),
+      tickets: st.can ? await partyTickets(db, b) : [],
       policy: describePolicy(rules), changesCloseAt: window.closesAt, canChange: st.can, reason: st.why,
       refundIfCancelledCents: st.can ? refundPolicyAmount(b.totalCents - b.refundedCents, rules, (b.departure.startAt.getTime() - Date.now()) / 3600000) : 0,
       options: st.can ? await options(db, b) : [],
     };
   } catch (e) { throw userFacingError(e); }
+}
+
+// Tickets a guest can add on this departure, at today's price for it.
+async function partyTickets(db: any, b: any) {
+  const [tickets, rules] = await Promise.all([db.ticketType.findMany({ where: { tourId: b.departure.tourId, active: true }, orderBy: { priceCents: 'desc' } }), db.pricingRule.findMany({ where: { tourId: b.departure.tourId } })]);
+  return tickets.map((t: any) => ({ id: t.id, name: t.name, unitPriceCents: applyPricingRules(t.priceCents, t.id, b.departure.startAt, b.departure.tour.timezone || 'America/New_York', rules).unitPriceCents, minAge: t.minAge, maxAge: t.maxAge }));
 }
 
 // Cancel under the booking's published policy. The refund amount comes from the policy snapshot taken at booking time, never from the caller.

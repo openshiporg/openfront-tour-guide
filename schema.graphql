@@ -2498,6 +2498,8 @@ type Booking {
   rebookCreditHash: String
   creditUsedAt: DateTime
   manageTokenVersion: Int
+  partyChanges(where: PartyChangeWhereInput! = {}, orderBy: [PartyChangeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PartyChangeWhereUniqueInput): [PartyChange!]
+  partyChangesCount(where: PartyChangeWhereInput! = {}): Int
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -2566,6 +2568,7 @@ input BookingWhereInput {
   rebookCreditHash: StringNullableFilter
   creditUsedAt: DateTimeNullableFilter
   manageTokenVersion: IntNullableFilter
+  partyChanges: PartyChangeManyRelationFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2612,6 +2615,12 @@ input BookingLineManyRelationFilter {
   every: BookingLineWhereInput
   some: BookingLineWhereInput
   none: BookingLineWhereInput
+}
+
+input PartyChangeManyRelationFilter {
+  every: PartyChangeWhereInput
+  some: PartyChangeWhereInput
+  none: PartyChangeWhereInput
 }
 
 input BookingOrderByInput {
@@ -2678,6 +2687,7 @@ input BookingUpdateInput {
   rebookCreditHash: String
   creditUsedAt: DateTime
   manageTokenVersion: Int
+  partyChanges: PartyChangeRelateToManyForUpdateInput
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -2741,6 +2751,13 @@ input ChannelStatementRelateToOneForUpdateInput {
   disconnect: Boolean
 }
 
+input PartyChangeRelateToManyForUpdateInput {
+  disconnect: [PartyChangeWhereUniqueInput!]
+  set: [PartyChangeWhereUniqueInput!]
+  create: [PartyChangeCreateInput!]
+  connect: [PartyChangeWhereUniqueInput!]
+}
+
 input BookingUpdateArgs {
   where: BookingWhereUniqueInput!
   data: BookingUpdateInput!
@@ -2782,6 +2799,7 @@ input BookingCreateInput {
   rebookCreditHash: String
   creditUsedAt: DateTime
   manageTokenVersion: Int
+  partyChanges: PartyChangeRelateToManyForCreateInput
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -2829,6 +2847,11 @@ input InventoryHoldRelateToOneForCreateInput {
 input ChannelStatementRelateToOneForCreateInput {
   create: ChannelStatementCreateInput
   connect: ChannelStatementWhereUniqueInput
+}
+
+input PartyChangeRelateToManyForCreateInput {
+  create: [PartyChangeCreateInput!]
+  connect: [PartyChangeWhereUniqueInput!]
 }
 
 type BookingLine {
@@ -3030,6 +3053,145 @@ input InventoryHoldCreateInput {
   status: InventoryHoldStatusType
   quote: JSON
   booking: BookingRelateToOneForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type PartyChange {
+  id: ID!
+  booking: Booking
+  source: PartyChangeSourceType
+  status: PartyChangeStatusType
+  plan: JSON
+  differenceCents: Int
+  collectCents: Int
+  refundCents: Int
+  keptCents: Int
+  currencyCode: String
+  holdId: String
+  paymentIntentId: String
+  clientSecret: String
+  expiresAt: DateTime
+  reason: String
+  requestKey: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum PartyChangeSourceType {
+  guest
+  staff
+}
+
+enum PartyChangeStatusType {
+  pending_payment
+  applied
+  cancelled
+  failed
+}
+
+input PartyChangeWhereUniqueInput {
+  id: ID
+  requestKey: String
+}
+
+input PartyChangeWhereInput {
+  AND: [PartyChangeWhereInput!]
+  OR: [PartyChangeWhereInput!]
+  NOT: [PartyChangeWhereInput!]
+  id: IDFilter
+  booking: BookingWhereInput
+  source: PartyChangeSourceTypeNullableFilter
+  status: PartyChangeStatusTypeNullableFilter
+  differenceCents: IntNullableFilter
+  collectCents: IntNullableFilter
+  refundCents: IntNullableFilter
+  keptCents: IntNullableFilter
+  currencyCode: StringFilter
+  holdId: StringFilter
+  paymentIntentId: StringFilter
+  clientSecret: StringFilter
+  expiresAt: DateTimeNullableFilter
+  reason: StringFilter
+  requestKey: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PartyChangeSourceTypeNullableFilter {
+  equals: PartyChangeSourceType
+  in: [PartyChangeSourceType!]
+  notIn: [PartyChangeSourceType!]
+  not: PartyChangeSourceTypeNullableFilter
+}
+
+input PartyChangeStatusTypeNullableFilter {
+  equals: PartyChangeStatusType
+  in: [PartyChangeStatusType!]
+  notIn: [PartyChangeStatusType!]
+  not: PartyChangeStatusTypeNullableFilter
+}
+
+input PartyChangeOrderByInput {
+  id: OrderDirection
+  source: OrderDirection
+  status: OrderDirection
+  differenceCents: OrderDirection
+  collectCents: OrderDirection
+  refundCents: OrderDirection
+  keptCents: OrderDirection
+  currencyCode: OrderDirection
+  holdId: OrderDirection
+  paymentIntentId: OrderDirection
+  clientSecret: OrderDirection
+  expiresAt: OrderDirection
+  reason: OrderDirection
+  requestKey: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PartyChangeUpdateInput {
+  booking: BookingRelateToOneForUpdateInput
+  source: PartyChangeSourceType
+  status: PartyChangeStatusType
+  plan: JSON
+  differenceCents: Int
+  collectCents: Int
+  refundCents: Int
+  keptCents: Int
+  currencyCode: String
+  holdId: String
+  paymentIntentId: String
+  clientSecret: String
+  expiresAt: DateTime
+  reason: String
+  requestKey: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PartyChangeUpdateArgs {
+  where: PartyChangeWhereUniqueInput!
+  data: PartyChangeUpdateInput!
+}
+
+input PartyChangeCreateInput {
+  booking: BookingRelateToOneForCreateInput
+  source: PartyChangeSourceType
+  status: PartyChangeStatusType
+  plan: JSON
+  differenceCents: Int
+  collectCents: Int
+  refundCents: Int
+  keptCents: Int
+  currencyCode: String
+  holdId: String
+  paymentIntentId: String
+  clientSecret: String
+  expiresAt: DateTime
+  reason: String
+  requestKey: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -5173,6 +5335,12 @@ type Mutation {
   updateInventoryHolds(data: [InventoryHoldUpdateArgs!]!): [InventoryHold]
   deleteInventoryHold(where: InventoryHoldWhereUniqueInput!): InventoryHold
   deleteInventoryHolds(where: [InventoryHoldWhereUniqueInput!]!): [InventoryHold]
+  createPartyChange(data: PartyChangeCreateInput!): PartyChange
+  createPartyChanges(data: [PartyChangeCreateInput!]!): [PartyChange]
+  updatePartyChange(where: PartyChangeWhereUniqueInput!, data: PartyChangeUpdateInput!): PartyChange
+  updatePartyChanges(data: [PartyChangeUpdateArgs!]!): [PartyChange]
+  deletePartyChange(where: PartyChangeWhereUniqueInput!): PartyChange
+  deletePartyChanges(where: [PartyChangeWhereUniqueInput!]!): [PartyChange]
   createParticipant(data: ParticipantCreateInput!): Participant
   createParticipants(data: [ParticipantCreateInput!]!): [Participant]
   updateParticipant(where: ParticipantWhereUniqueInput!, data: ParticipantUpdateInput!): Participant
@@ -5321,6 +5489,9 @@ type Mutation {
   leaveWaitlist(entryId: ID!, token: String!, idempotencyKey: String!): JSON
   withdrawWaitlistEntry(input: WaitlistWithdrawInput!, idempotencyKey: String!): JSON
   bookWaitlistOffer(input: WaitlistBookInput!, idempotencyKey: String!): JSON
+  changeParty(bookingRef: String!, token: String!, input: PartyChangeInput!, idempotencyKey: String!): JSON
+  completePartyChange(bookingRef: String!, token: String!, changeId: ID!, idempotencyKey: String): JSON
+  changeBookingParty(input: StaffPartyChangeInput!, idempotencyKey: String!): JSON
   moveBooking(input: MoveBookingInput!, idempotencyKey: String!): JSON
   cancelDeparture(input: CancelDepartureInput!, idempotencyKey: String!): JSON
   exportSalesCsv(input: SalesReportInput!): JSON
@@ -5436,6 +5607,9 @@ type Query {
   inventoryHold(where: InventoryHoldWhereUniqueInput!): InventoryHold
   inventoryHolds(where: InventoryHoldWhereInput! = {}, orderBy: [InventoryHoldOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InventoryHoldWhereUniqueInput): [InventoryHold!]
   inventoryHoldsCount(where: InventoryHoldWhereInput! = {}): Int
+  partyChange(where: PartyChangeWhereUniqueInput!): PartyChange
+  partyChanges(where: PartyChangeWhereInput! = {}, orderBy: [PartyChangeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PartyChangeWhereUniqueInput): [PartyChange!]
+  partyChangesCount(where: PartyChangeWhereInput! = {}): Int
   participant(where: ParticipantWhereUniqueInput!): Participant
   participants(where: ParticipantWhereInput! = {}, orderBy: [ParticipantOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ParticipantWhereUniqueInput): [Participant!]
   participantsCount(where: ParticipantWhereInput! = {}): Int
@@ -5520,6 +5694,9 @@ type Query {
   salesReport(from: String!, to: String!, basis: String): JSON
   waitlistStatus(entryId: ID!, token: String!): JSON
   waitlistBoard(status: String): JSON
+  partyChangeQuote(bookingRef: String!, token: String!, input: PartyChangeInput!): JSON
+  bookingParty(bookingId: ID!): JSON
+  bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
 }
 
@@ -5827,6 +6004,24 @@ input WaitlistWithdrawInput {
 input WaitlistBookInput {
   entryId: ID!
   participants: [String!]!
+}
+
+input PartyAddInput {
+  ticketTypeId: ID!
+  fullName: String!
+  age: Int
+}
+
+input PartyChangeInput {
+  keep: [ID!]!
+  add: [PartyAddInput!]
+}
+
+input StaffPartyChangeInput {
+  bookingId: ID!
+  keep: [ID!]!
+  add: [PartyAddInput!]
+  reason: String!
 }
 
 input MoveBookingInput {

@@ -95,3 +95,16 @@ export async function leaveWaitlist(entryId: string, token: string, key: string)
   const r = await call<{ leaveWaitlist: any }>(`mutation($e:ID!,$t:String!,$k:String!){ leaveWaitlist(entryId:$e, token:$t, idempotencyKey:$k) }`, { e: entryId, t: token, k: key })
   return r.ok ? { ok: true as const } : r
 }
+export type PartyChange = { keep: string[]; add: { ticketTypeId: string; fullName: string; age?: number | null }[] }
+export async function partyQuote(bookingRef: string, token: string, input: PartyChange) {
+  const r = await call<{ partyChangeQuote: any }>(`query($r:String!,$t:String!,$i:PartyChangeInput!){ partyChangeQuote(bookingRef:$r, token:$t, input:$i) }`, { r: bookingRef, t: token, i: input })
+  return r.ok ? { ok: true as const, quote: r.data.partyChangeQuote } : r
+}
+export async function changeParty(bookingRef: string, token: string, input: PartyChange, key: string) {
+  const r = await call<{ changeParty: any }>(`mutation($r:String!,$t:String!,$i:PartyChangeInput!,$k:String!){ changeParty(bookingRef:$r, token:$t, input:$i, idempotencyKey:$k) }`, { r: bookingRef, t: token, i: input, k: key })
+  return r.ok ? { ok: true as const, result: r.data.changeParty } : r
+}
+export async function completePartyChange(bookingRef: string, token: string, changeId: string) {
+  const r = await call<{ completePartyChange: any }>(`mutation($r:String!,$t:String!,$c:ID!){ completePartyChange(bookingRef:$r, token:$t, changeId:$c) }`, { r: bookingRef, t: token, c: changeId })
+  return r.ok ? { ok: true as const, result: r.data.completePartyChange } : r
+}

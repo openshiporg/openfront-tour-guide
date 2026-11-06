@@ -7,6 +7,7 @@ import { createPayment, getPaymentStatus, refundPayment } from '../utils/payment
 import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
 import { refundPolicyAmount, basisPoints, minimumDecision } from '../lib/tour-money';
 import { promoteWaitlist, markWaitlistConverted, closeWaitlist } from './tour-waitlist';
+import { allocateRefund, legKey, legWhere } from '../lib/tour-tender';
 import { consumeManagerApproval, requestManagerApproval, approveManagerApproval } from '../utils/managerApproval';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded', 'refunded'];
@@ -197,57 +198,82 @@ export async function lookupBooking(_r: any, args: any, context: any) {
   return bookingView(context.prisma, booking);
 }
 
-// Money path shared by cancel, refund, and departure cancellation. The provider call sits outside DB locks.
-export async function issueRefund(prisma: any, a: { bookingId: string; amount: number; reason: string; key: string; actorId: string | null; cancel?: boolean; approvalId?: string | null; requestedById?: string | null; approvalThresholdCents?: number }) {
+// Money path shared by cancel, refund, departure cancellation and party changes. A refund is split across the booking's captured payments
+// (newest first, see allocateRefund), one Refund row per leg. Reserving happens under the departure lock, in the caller's transaction when
+// the refund is part of a bigger change (reserveRefund), and the provider calls happen after it commits (settleRefund).
+type RefundArgs = { bookingId: string; amount: number; reason: string; key: string; actorId: string | null; cancel?: boolean; approvalId?: string | null; requestedById?: string | null; approvalThresholdCents?: number; tenderOnly?: boolean };
+export async function issueRefund(prisma: any, a: RefundArgs) {
   const reservation = await prisma.$transaction(async (tx: any) => {
-    const b = await tx.booking.findUnique({ where: { id: a.bookingId } });
+    const b = await tx.booking.findUnique({ where: { id: a.bookingId }, select: { departureId: true } });
     await lockTransactionKey(tx, `departure:${b.departureId}`);
-    const existing = await tx.refund.findUnique({ where: { idempotencyKey: a.key } });
-    if (existing) return { refund: existing, replay: true };
-    const payment = await tx.payment.findFirst({ where: { orderId: b.id, status: { in: ['succeeded', 'partially_refunded'] } }, include: { paymentProvider: true } });
-    const live = await tx.booking.findUnique({ where: { id: b.id } });
-    if (!payment) { if (a.amount === 0 || live.totalCents === 0 || live.channelId) return { refund: null, payment: null, booking: live }; throw new Error('No captured payment to refund'); }
-    if (!Number.isSafeInteger(a.amount) || a.amount < 0 || a.amount > payment.amount - (payment.refundedAmount || 0)) throw new Error('Refund exceeds captured amount');
-    if (a.amount === 0) return { refund: null, payment, booking: live };
-    // The approval is consumed only after the lock, the replay check and amount validation, in this same transaction,
-    // so a failed or replayed request never burns it.
-    let approvedById: string | null = null;
-    if (a.approvalThresholdCents !== undefined && a.amount > a.approvalThresholdCents) {
-      const approval = await consumeManagerApproval(tx, { actionType: 'refund_booking', targetId: b.id, reason: a.reason, amount: a.amount, approvalId: a.approvalId, actorId: a.actorId, entityType: 'Booking', entityId: b.id });
-      approvedById = approval.approvedById;
-    }
-    const refund = await tx.refund.create({ data: { idempotencyKey: a.key, amount: a.amount, currencyCode: payment.currencyCode, status: 'processing', reason: a.reason || 'Refund', paymentId: payment.id, orderId: b.id, requestedById: a.requestedById || a.actorId, approvedById } });
-    await audit(tx, a.actorId, 'refund.reserved', 'Refund', refund.id, null, { amount: a.amount }, a.reason, a.key);
-    return { refund, payment, booking: live };
+    return reserveRefund(tx, a);
   }, { timeout: 20000 });
-  if (reservation.replay && reservation.refund.status === 'succeeded') return reservation.refund;
-  const { refund, payment } = reservation as any;
-  let outcome: any = { status: 'succeeded', id: '' };
-  const operatorTender = !!payment && (payment.paymentMethod === 'cash' || !payment.providerPaymentId);
-  if (refund && operatorTender) outcome = { status: 'succeeded', id: `manual:${refund.id}` };
-  else if (refund) {
+  return settleRefund(prisma, a, reservation);
+}
+// Caller holds the booking's departure lock. A replay (same key) returns the legs already reserved and reserves nothing new.
+export async function reserveRefund(tx: any, a: RefundArgs) {
+  const existing = await tx.refund.findMany({ where: { orderId: a.bookingId, ...legWhere(a.key) }, orderBy: { createdAt: 'asc' } });
+  if (existing.length) return { legs: existing, replay: true };
+  const live = await tx.booking.findUnique({ where: { id: a.bookingId } });
+  const payments = await tx.payment.findMany({ where: { orderId: live.id, status: { in: ['succeeded', 'partially_refunded'] } } });
+  if (!Number.isSafeInteger(a.amount) || a.amount < 0) throw new Error('Refund exceeds captured amount');
+  if (!payments.length) { if (a.amount === 0 || live.totalCents === 0 || live.channelId) return { legs: [], replay: false }; throw new Error('No captured payment to refund'); }
+  if (a.amount === 0) return { legs: [], replay: false };
+  const plan = allocateRefund(payments, a.amount);
+  // The approval is consumed only after the lock, the replay check and amount validation, in this same transaction,
+  // so a failed or replayed request never burns it.
+  let approvedById: string | null = null;
+  if (a.approvalThresholdCents !== undefined && a.amount > a.approvalThresholdCents) {
+    const approval = await consumeManagerApproval(tx, { actionType: 'refund_booking', targetId: live.id, reason: a.reason, amount: a.amount, approvalId: a.approvalId, actorId: a.actorId, entityType: 'Booking', entityId: live.id });
+    approvedById = approval.approvedById;
+  }
+  const legs: any[] = [];
+  for (const [i, leg] of plan.entries()) {
+    const payment = payments.find((x: any) => x.id === leg.paymentId);
+    legs.push(await tx.refund.create({ data: { idempotencyKey: legKey(a.key, i), amount: leg.amount, currencyCode: payment.currencyCode, status: 'processing', reason: a.reason || 'Refund', paymentId: payment.id, orderId: live.id, requestedById: a.requestedById || a.actorId, approvedById } }));
+  }
+  await audit(tx, a.actorId, 'refund.reserved', 'Refund', legs[0].id, null, { amount: a.amount, legs: legs.map((l: any) => ({ id: l.id, paymentId: l.paymentId, amount: l.amount })) }, a.reason, a.key);
+  return { legs, replay: false };
+}
+// Provider call per unsettled leg (cash and other operator tenders are returned by hand), then one transaction records the outcomes.
+// The booking's refunded total and status change only once every leg has succeeded; tenderOnly refunds (a party change already
+// lowered the booking total) touch only the payments.
+export async function settleRefund(prisma: any, a: RefundArgs, reservation: { legs: any[]; replay: boolean }) {
+  const legs = reservation.legs;
+  const total = legs.reduce((n: number, l: any) => n + l.amount, 0);
+  const summary = (rows: any[]) => rows.length ? { ...rows[0], amount: rows.reduce((n: number, l: any) => n + l.amount, 0), status: rows.every((l: any) => l.status === 'succeeded') ? 'succeeded' : rows.some((l: any) => l.status === 'failed') ? 'failed' : 'unknown', legs: rows.length } : { status: 'succeeded', amount: 0, legs: 0 };
+  if (reservation.replay && legs.every((l: any) => l.status === 'succeeded')) return summary(legs);
+  const outcomes = new Map<string, any>();
+  for (const leg of legs) {
+    if (leg.status === 'succeeded') continue;
+    const payment = await prisma.payment.findUnique({ where: { id: leg.paymentId }, include: { paymentProvider: true } });
+    if (payment.paymentMethod === 'cash' || !payment.providerPaymentId) { outcomes.set(leg.id, { status: 'succeeded', id: `manual:${leg.id}` }); continue; }
     try {
       const prov = payment.paymentProvider || await provider(prisma);
-      const result = await refundPayment({ provider: prov, paymentId: payment.providerPaymentId, amount: refund.amount, currency: refund.currencyCode, idempotencyKey: refund.idempotencyKey });
-      outcome = { status: result.status === 'succeeded' ? 'succeeded' : result.status === 'failed' ? 'failed' : 'unknown', id: result.id || result.refundId, data: result.data };
-    } catch { outcome = { status: 'unknown', id: '' }; }
+      const result = await refundPayment({ provider: prov, paymentId: payment.providerPaymentId, amount: leg.amount, currency: leg.currencyCode, idempotencyKey: leg.idempotencyKey });
+      outcomes.set(leg.id, { status: result.status === 'succeeded' ? 'succeeded' : result.status === 'failed' ? 'failed' : 'unknown', id: result.id || result.refundId });
+    } catch { outcomes.set(leg.id, { status: 'unknown', id: '' }); }
   }
   return prisma.$transaction(async (tx: any) => {
     const b = await tx.booking.findUnique({ where: { id: a.bookingId } });
     await lockTransactionKey(tx, `departure:${b.departureId}`);
-    if (refund) {
-      const current = await tx.refund.findUnique({ where: { id: refund.id } });
-      if (current.status === 'succeeded') return current;
-      await tx.refund.update({ where: { id: refund.id }, data: { status: outcome.status, providerRefundId: outcome.id || '', processedAt: outcome.status === 'succeeded' ? new Date() : null } });
-      if (outcome.status === 'succeeded') {
-        const p = await tx.payment.findUnique({ where: { id: payment.id } });
-        const total = (p.refundedAmount || 0) + refund.amount;
-        await tx.payment.update({ where: { id: p.id }, data: { refundedAmount: total, status: total >= p.amount ? 'refunded' : 'partially_refunded' } });
-        if (b.paymentCollectionId) await tx.paymentCollection.update({ where: { id: b.paymentCollectionId }, data: { refundedAmount: { increment: refund.amount } } });
-      }
+    let settled = true, newlySettled = false;
+    for (const leg of legs) {
+      const current = await tx.refund.findUnique({ where: { id: leg.id } });
+      if (current.status === 'succeeded') continue;
+      const outcome = outcomes.get(leg.id) || { status: 'unknown', id: '' };
+      await tx.refund.update({ where: { id: leg.id }, data: { status: outcome.status, providerRefundId: outcome.id || '', processedAt: outcome.status === 'succeeded' ? new Date() : null } });
+      if (outcome.status !== 'succeeded') { settled = false; continue; }
+      newlySettled = true;
+      const p = await tx.payment.findUnique({ where: { id: leg.paymentId } });
+      const refunded = (p.refundedAmount || 0) + leg.amount;
+      await tx.payment.update({ where: { id: p.id }, data: { refundedAmount: refunded, status: refunded >= p.amount ? 'refunded' : 'partially_refunded' } });
+      if (p.paymentCollectionId) await tx.paymentCollection.update({ where: { id: p.paymentCollectionId }, data: { refundedAmount: { increment: leg.amount } } });
     }
-    if (!refund || outcome.status === 'succeeded') {
-      const refunded = (b.refundedCents || 0) + (refund ? refund.amount : 0);
+    if (!settled) await audit(tx, a.actorId, 'refund.unresolved', 'Refund', legs[0].id, null, { legs: legs.map((l: any) => ({ id: l.id, status: outcomes.get(l.id)?.status || l.status })) }, 'Reconcile with the provider before retrying', a.key);
+    else if (a.tenderOnly) { if (newlySettled) await audit(tx, a.actorId, 'refund.settled', 'Booking', b.id, null, { amount: total, legs: legs.length }, a.reason, a.key); }
+    else if (!legs.length || newlySettled) {
+      const refunded = (b.refundedCents || 0) + total;
       const data: any = { refundedCents: refunded };
       if (a.cancel) { data.status = refunded >= b.totalCents && b.totalCents > 0 ? 'refunded' : 'cancelled'; data.seats = 0; if (b.totalCents === 0) data.status = 'cancelled'; }
       else if (refunded > 0) data.status = refunded >= b.totalCents ? 'refunded' : 'partially_refunded';
@@ -255,8 +281,8 @@ export async function issueRefund(prisma: any, a: { bookingId: string; amount: n
       await tx.booking.update({ where: { id: b.id }, data });
       if (a.cancel) { await tx.promoRedemption.updateMany({ where: { bookingId: b.id, status: 'committed' }, data: { status: 'released' } }); await refreshDepartureStatus(tx, b.departureId); await promoteWaitlist(tx, b.departureId, a.actorId); }
       await audit(tx, a.actorId, a.cancel ? 'booking.cancelled' : 'booking.refunded', 'Booking', b.id, { status: b.status, refundedCents: b.refundedCents }, data, a.reason, a.key);
-    } else await audit(tx, a.actorId, 'refund.unresolved', 'Refund', refund.id, null, { status: outcome.status }, 'Reconcile with the provider before retrying', a.key);
-    return refund ? tx.refund.findUnique({ where: { id: refund.id } }) : { status: 'succeeded', amount: 0 };
+    }
+    return summary(legs.length ? await tx.refund.findMany({ where: { id: { in: legs.map((l: any) => l.id) } }, orderBy: { createdAt: 'asc' } }) : []);
   }, { timeout: 20000 });
 }
 export async function cancelMyBooking(_r: any, args: any, context: any) {

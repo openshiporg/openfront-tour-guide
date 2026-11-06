@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { platformMutation, platformQuery } from '../../lib/gql'
+import { keystoneClient } from '@/features/dashboard/lib/keystoneClient'
 
 export async function getBookingOptions() {
   // Departures and tours are fetched separately and joined here: nesting tour{ticketTypes} under ~150
@@ -73,4 +74,22 @@ export async function approveRefundAction(approvalId: string) {
   const result = await platformMutation(`mutation($approvalId:ID!){ approveRefund(approvalId:$approvalId) }`, { approvalId })
   revalidatePath('/dashboard/platform/bookings')
   return result
+}
+export type PartyInput = { keep: string[]; add: { ticketTypeId: string; fullName: string; age?: number | null }[] }
+export async function getBookingPartyAction(bookingId: string) {
+  const data = await platformQuery<{ bookingParty: any }>(`query($bookingId:ID!){ bookingParty(bookingId:$bookingId) }`, { bookingId })
+  return data?.bookingParty || null
+}
+export async function quotePartyAction(bookingId: string, input: PartyInput) {
+  const r = await keystoneClient<{ bookingPartyQuote: any }>(`query($bookingId:ID!,$input:PartyChangeInput!){ bookingPartyQuote(bookingId:$bookingId,input:$input) }`, { bookingId, input })
+  return r.success ? { ok: true as const, quote: (r.data as any).bookingPartyQuote } : { ok: false as const, error: r.error || 'Could not price the change' }
+}
+export async function changePartyAction(bookingId: string, input: PartyInput, reason: string, idempotencyKey: string) {
+  const send = () => platformMutation(`mutation($input:StaffPartyChangeInput!,$idempotencyKey:String!){ changeBookingParty(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { bookingId, ...input, reason }, idempotencyKey })
+  // A change with a refund can outlast the client timeout on a slow database. The same key replays the committed change (and finishes the
+  // refund if it was still in flight), so one quiet retry turns a timeout into the real answer instead of a scary error.
+  let result = await send()
+  if (!result.success && /Unable to complete the request/i.test(String(result.error || ''))) result = await send()
+  revalidatePath('/dashboard/platform/bookings')
+  return result.success ? { success: true as const, change: (result.data as any)?.changeBookingParty } : result
 }
