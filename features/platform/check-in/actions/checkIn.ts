@@ -26,3 +26,8 @@ export async function captureWaiverAction(participantId: string, signerName: str
   revalidatePath('/dashboard/platform/check-in'); revalidatePath('/dashboard/platform/today')
   return result
 }
+export async function syncOfflineAction(departureId: string, events: { key: string; kind: 'check_in' | 'no_show'; participantId?: string; bookingId?: string; recordedAt: string }[], idempotencyKey: string) {
+  const result = await platformMutation(`mutation($input:SyncOfflineCheckInsInput!,$idempotencyKey:String!){ syncOfflineCheckIns(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { departureId, events }, idempotencyKey })
+  revalidatePath('/dashboard/platform/check-in')
+  return result.success ? { success: true as const, data: (result.data as any).syncOfflineCheckIns } : result
+}

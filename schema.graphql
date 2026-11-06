@@ -5761,6 +5761,7 @@ type Mutation {
   unassignResource(input: UnassignResourceInput!, idempotencyKey: String!): JSON
   resizeDeparture(input: ResizeDepartureInput!, idempotencyKey: String!): JSON
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
+  syncOfflineCheckIns(input: SyncOfflineCheckInsInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
   resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
   joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
@@ -6284,6 +6285,19 @@ input ResizeDepartureInput {
 
 input ParticipantActionInput {
   participantId: ID!
+}
+
+input OfflineTapInput {
+  key: String!
+  kind: String!
+  participantId: ID
+  bookingId: ID
+  recordedAt: String!
+}
+
+input SyncOfflineCheckInsInput {
+  departureId: ID!
+  events: [OfflineTapInput!]!
 }
 
 input BookingActionInput {

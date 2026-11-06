@@ -4,6 +4,7 @@ import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
 import { expandSchedule, departureData } from '../lib/tour-schedule';
 import { settlement } from '../lib/tour-money';
 import { promoteWaitlist } from './tour-waitlist';
+import { decide, recordedTime, validateBatch, type OfflineEvent } from '../lib/tour-offline-checkin';
 
 export async function generateDepartures(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures');
@@ -169,5 +170,49 @@ export async function generateChannelStatement(_r: any, args: any, context: any)
     const statement = await tx.channelStatement.create({ data: { statementKey: `${channel.id}:${from.toISOString()}:${to.toISOString()}`, channelId: channel.id, periodStart: from, periodEnd: to, grossCents, commissionCents, netDueCents: channel.paymentModel === 'channel_collects' ? grossCents - commissionCents : -commissionCents, status: 'open' } });
     await tx.booking.updateMany({ where: { id: { in: bookings.map((b: any) => b.id) } }, data: { statementId: statement.id } });
     await audit(tx, context.session.itemId, 'channel.statement_created', 'ChannelStatement', statement.id, null, { grossCents, commissionCents }); return statement;
+  });
+}
+
+// Offline check-in sync. A guide's device queues taps with no signal and replays them here in one batch. Each tap is decided
+// against the booking as it is NOW, in tap order, under the same departure lock as live check-in. Every tap leaves one audit row
+// (requestId offline:<actor>:<key>) holding its outcome, so a resent tap returns what happened the first time and never applies twice.
+export async function syncOfflineCheckIns(_r: any, args: any, context: any) {
+  const actor = await authorize(context, 'canCheckIn'); const i = args.input || {};
+  const departureId = String(i.departureId || ''), events: OfflineEvent[] = i.events || [];
+  const bad = validateBatch(events); if (bad) throw new Error(bad);
+  await assertDepartureAccess(context.prisma, actor, departureId);
+  const rid = (k: string) => `offline:${actor.id}:${k}`;
+  return command(context, args.idempotencyKey, 'syncOfflineCheckIns', { departureId, keys: events.map((e) => e.key) }, [`departure:${departureId}`], async tx => {
+    const now = new Date();
+    const prior = await tx.auditEvent.findMany({ where: { requestId: { in: events.map((e) => rid(e.key)) } }, select: { requestId: true, after: true } });
+    const stored = new Map(prior.map((a: any) => [a.requestId, a.after?.decision]));
+    const fresh = events.filter((e) => !stored.has(rid(e.key)));
+    const pids = fresh.filter((e) => e.kind === 'check_in').map((e) => String(e.participantId));
+    const bids = fresh.filter((e) => e.kind === 'no_show').map((e) => String(e.bookingId));
+    const bookings = fresh.length ? await tx.booking.findMany({ where: { OR: [{ id: { in: bids } }, { participants: { some: { id: { in: pids } } } }] }, select: { id: true, bookingRef: true, status: true, departureId: true, participants: { select: { id: true, fullName: true, checkInStatus: true } } } }) : [];
+    const decided = decide(fresh, bookings, departureId, new Set());
+    const applied = decided.filter((d: any) => d.outcome === 'applied') as any[];
+    const ins = applied.filter((d) => d.kind === 'check_in'), outs = applied.filter((d) => d.kind === 'no_show');
+    if (ins.length) await tx.participant.updateMany({ where: { id: { in: ins.map((d) => d.participantId) } }, data: { checkInStatus: 'checked_in' } });
+    if (outs.length) {
+      await tx.booking.updateMany({ where: { id: { in: outs.map((d) => d.bookingId) }, status: 'confirmed' }, data: { status: 'no_show' } });
+      await tx.participant.updateMany({ where: { bookingId: { in: outs.map((d) => d.bookingId) }, checkInStatus: 'pending' }, data: { checkInStatus: 'no_show' } });
+    }
+    // A booking whose whole party is now in moves to checked_in, as live check-in does.
+    const touched = [...new Set(ins.map((d) => d.bookingId))];
+    if (touched.length) {
+      const pending = await tx.participant.findMany({ where: { bookingId: { in: touched }, checkInStatus: { not: 'checked_in' } }, select: { bookingId: true } });
+      const full = touched.filter((id) => !pending.some((p: any) => p.bookingId === id));
+      if (full.length) await tx.booking.updateMany({ where: { id: { in: full }, status: 'confirmed' }, data: { status: 'checked_in' } });
+    }
+    const byKey = new Map(fresh.map((e) => [e.key, e]));
+    await tx.auditEvent.createMany({ data: decided.map((d: any) => {
+      const e: any = byKey.get(d.key), at = recordedTime(e.recordedAt, now).toISOString();
+      const action = d.outcome === 'conflict' ? 'checkin.offline_conflict' : d.outcome === 'already' ? 'checkin.offline_duplicate' : d.kind === 'check_in' ? 'participant.checked_in' : 'booking.no_show';
+      const target = d.kind === 'check_in' || e.kind === 'check_in' ? ['Participant', String(e.participantId)] : ['Booking', String(e.bookingId)];
+      return { actorId: actor.id, action, targetList: target[0], targetId: target[1], after: { offline: true, recordedAt: at, syncedAt: now.toISOString(), decision: d }, reason: d.reason || '', requestId: rid(d.key) };
+    }) });
+    const results = events.map((e) => stored.has(rid(e.key)) ? { ...(stored.get(rid(e.key)) as any), replay: true } : decided.find((d) => d.key === e.key));
+    return { results, applied: applied.length, conflicts: results.filter((r: any) => r.outcome === 'conflict').length };
   });
 }
