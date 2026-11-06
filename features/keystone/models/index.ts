@@ -17,11 +17,12 @@ import { Refund } from './Refund';
 import { PaymentWebhookEvent } from './PaymentWebhookEvent';
 import { ManagerApproval } from './ManagerApproval';
 import { IdempotencyKey } from './IdempotencyKey';
+import { GiftCard, GiftCardEntry } from './giftCards';
 export const models = {
   User, Role, OAuthApp, OAuthToken, Tour, TicketType, AddOn, MeetingPoint, CancellationPolicy, PricingRule, Schedule,
   Departure, Guide, GuideCertification, GuideAvailability, GuideAssignment, Resource, ResourceAssignment, GuidePayout,
   Booking, BookingLine, InventoryHold, PartyChange, Participant, WaiverTemplate, WaiverSignature, Channel, ChannelStatement,
   OperationalTask, NotificationPreference, WaitlistEntry, StoreSettings, AuditEvent, PromoCode, PromoRedemption, PaymentProvider, PaymentCollection, PaymentSession,
-  Payment, Refund, PaymentWebhookEvent, IdempotencyKey, ManagerApproval,
+  Payment, Refund, PaymentWebhookEvent, IdempotencyKey, ManagerApproval, GiftCard, GiftCardEntry,
 };
 export default models;

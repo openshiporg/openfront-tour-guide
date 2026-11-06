@@ -13,6 +13,7 @@ import { manageBooking, cancelManagedBooking, rescheduleManagedBooking, resetGue
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
 import { guestNotifications } from './tour-notification-queue';
 import { partyChangeQuote, changeParty, completePartyChange, bookingParty, bookingPartyQuote, changeBookingParty } from './tour-party-change';
+import { issueGiftCard, voidGiftCard, revealGiftCardCode, giftCardBoard, giftCardBalance } from './tour-gift-cards';
 import { joinWaitlist, addToWaitlist, waitlistStatus, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer, waitlistBoard } from './tour-waitlist';
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
@@ -31,7 +32,9 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input DepartureHoldInput { departureId: ID!, tickets: [TourTicketChoice!]!, addOns: [TourTicketChoice!], promoCode: String, token: String! }
       input BookingParticipantInput { ticketTypeId: ID!, fullName: String!, age: Int, email: String, dietary: String, medicalNotes: String }
       input BookingLeadInput { name: String!, email: String!, phone: String, specialRequests: String, pickupLocation: String }
-      input StartBookingCheckoutInput { holdId: ID!, token: String!, lead: BookingLeadInput!, participants: [BookingParticipantInput!]! }
+      input StartBookingCheckoutInput { holdId: ID!, token: String!, lead: BookingLeadInput!, participants: [BookingParticipantInput!]!, giftCardCode: String }
+      input IssueGiftCardInput { amountCents: Int!, fundedBy: String!, recipientName: String, recipientEmail: String, expiresAt: String, note: String }
+      input VoidGiftCardInput { id: ID!, reason: String! }
       input CompleteBookingCheckoutInput { bookingRef: String!, token: String! }
       input ChannelBookingInput { departureId: ID!, source: String!, channelId: ID, paymentMethod: String, tickets: [TourTicketChoice!]!, addOns: [TourTicketChoice!], promoCode: String, lead: BookingLeadInput!, participants: [BookingParticipantInput!]! }
       input SignWaiverInput { token: String!, signerName: String!, isGuardian: Boolean, minorName: String }
@@ -83,6 +86,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         salesReport(from: String!, to: String!, basis: String): JSON
         waitlistStatus(entryId: ID!, token: String!): JSON
         waitlistBoard(status: String): JSON
+        giftCardBoard(search: String): JSON
+        giftCardBalance(code: String!): JSON
         partyChangeQuote(bookingRef: String!, token: String!, input: PartyChangeInput!): JSON
         bookingParty(bookingId: ID!): JSON
         bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
@@ -107,6 +112,9 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
         joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+        issueGiftCard(input: IssueGiftCardInput!, idempotencyKey: String!): JSON
+        voidGiftCard(input: VoidGiftCardInput!, idempotencyKey: String!): JSON
+        revealGiftCardCode(id: ID!): JSON
         addToWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
         claimWaitlistOffer(entryId: ID!, token: String!, cartToken: String!): JSON
         leaveWaitlist(entryId: ID!, token: String!, idempotencyKey: String!): JSON
@@ -136,12 +144,13 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     `,
     resolvers: {
-      Query: { partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, resetGuestLink, moveBooking,
         transitionGuidePayout, transitionChannelStatement,
         changeParty, completePartyChange, changeBookingParty,
+        issueGiftCard, voidGiftCard, revealGiftCardCode,
         joinWaitlist, addToWaitlist, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer,
         cancelDeparture, captureWaiverOnSite, exportSalesCsv, weatherCancelDeparture, rebookWeatherBooking, closeDeparture, createChannelBooking, refundBooking, requestRefundApproval, approveRefund, generateChannelStatement, sweepDepartures, ensureTourOnboardingRecord, seedTourActivity, updateActiveUser,
       },

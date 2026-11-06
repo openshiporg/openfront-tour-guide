@@ -1,4 +1,4 @@
-import { ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
+import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -18,6 +18,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Check-in', href: '/platform/check-in', description: 'Mobile manifest and check-in.', icon: ClipboardCheck, group: 'standalone' },
   { title: 'Tours', href: '/platform/tours', description: 'Tours, ticket types, add-ons, schedules and policies.', icon: Compass, group: 'catalog' },
   { title: 'Waivers', href: '/platform/waivers', description: 'Waiver versions and signatures.', icon: FileSignature, group: 'catalog' },
+  { title: 'Gift cards', href: '/platform/gift-cards', description: 'Sell gift cards and vouchers; balances and history.', icon: Gift, group: 'catalog' },
   { title: 'Promo codes', href: '/platform/promo-codes', description: 'Discount codes and redemptions.', icon: Tag, group: 'catalog' },
   { title: 'Guides', href: '/platform/guides', description: 'Roster, certifications, assignments and payouts.', icon: Users, group: 'operations' },
   { title: 'Resources', href: '/platform/resources', description: 'Vans, boats and equipment pools.', icon: Truck, group: 'operations' },

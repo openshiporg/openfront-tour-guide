@@ -894,6 +894,48 @@ model ManagerApproval {
   @@index([approvedById])
 }
 
+model GiftCard {
+  id             String                @id @default(cuid())
+  codeHash       String                @unique @default("")
+  last4          String                @default("")
+  status         GiftCardStatusType?   @default(active)
+  initialCents   Int?                  @default(0)
+  balanceCents   Int?                  @default(0)
+  currencyCode   String                @default("USD")
+  expiresAt      DateTime?
+  fundedBy       GiftCardFundedByType? @default(cash)
+  recipientName  String                @default("")
+  recipientEmail String                @default("")
+  note           String                @default("")
+  issuedById     String                @default("")
+  replacesId     String                @default("")
+  entries        GiftCardEntry[]       @relation("GiftCardEntry_giftCard")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @default(now()) @updatedAt
+
+  @@index([recipientEmail])
+}
+
+model GiftCardEntry {
+  id                String                 @id @default(cuid())
+  giftCard          GiftCard?              @relation("GiftCardEntry_giftCard", fields: [giftCardId], references: [id])
+  giftCardId        String?                @map("giftCard")
+  kind              GiftCardEntryKindType? @default(issue)
+  amountCents       Int
+  balanceAfterCents Int?                   @default(0)
+  bookingId         String                 @default("")
+  bookingRef        String                 @default("")
+  paymentId         String                 @default("")
+  idempotencyKey    String                 @unique @default("")
+  reason            String                 @default("")
+  actorId           String                 @default("")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @default(now()) @updatedAt
+
+  @@index([giftCardId])
+  @@index([bookingId])
+}
+
 enum TourKindType {
   walking
   food
@@ -1083,4 +1125,21 @@ enum PromoRedemptionStatusType {
 enum PaymentCollectionDescriptionType {
   default
   refund
+}
+
+enum GiftCardStatusType {
+  active
+  void
+}
+
+enum GiftCardFundedByType {
+  cash
+  complimentary
+}
+
+enum GiftCardEntryKindType {
+  issue
+  redeem
+  return
+  void
 }

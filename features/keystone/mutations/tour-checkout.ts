@@ -8,6 +8,8 @@ import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
 import { refundPolicyAmount, basisPoints, minimumDecision } from '../lib/tour-money';
 import { promoteWaitlist, markWaitlistConverted, closeWaitlist } from './tour-waitlist';
 import { allocateRefund, legKey, legWhere } from '../lib/tour-tender';
+import { findCardByCode, debitCard, returnToCard } from './tour-gift-cards';
+import { unusable, applyCard } from '../lib/tour-gift-card';
 import { consumeManagerApproval, requestManagerApproval, approveManagerApproval } from '../utils/managerApproval';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded', 'refunded'];
@@ -113,6 +115,10 @@ export async function startBookingCheckout(_r: any, args: any, context: any) {
   if (!hold) throw new Error('Booking not found');
   assertProof(i.token, hold.cartTokenHash);
   const prov = await provider(context.prisma);
+  // A gift card is checked here and its share fixed on the payment session; it is debited only when the booking confirms
+  // (finalizeBookingPayment), so an abandoned checkout never holds gift value.
+  const gift = i.giftCardCode ? await findCardByCode(context.prisma, i.giftCardCode) : null;
+  if (i.giftCardCode) { const why = unusable(gift, hold.quote?.currencyCode || 'USD'); if (why) throw userFacingError(new Error(why === 'This gift card is no longer valid' ? 'Gift card not found' : why)); }
   const b = await context.prisma.$transaction(async (tx: any) => {
     await lockTransactionKey(tx, `departure:${hold.departureId}`);
     const h = await tx.inventoryHold.findUnique({ where: { id: hold.id } });
@@ -123,21 +129,24 @@ export async function startBookingCheckout(_r: any, args: any, context: any) {
     const participants = buildParticipants(quote, i.participants);
     const booking = await newBooking(tx, { quote, lead: i.lead, participants, source: 'online', holdId: h.id, customerId: context.session?.itemId, status: 'pending_payment' });
     await tx.inventoryHold.update({ where: { id: h.id }, data: { expiresAt: new Date(Math.max(h.expiresAt.getTime(), Date.now() + 15 * 60000)) } }); // a waitlist offer keeps its longer window
+    const split = gift ? applyCard(gift.balanceCents, quote.totalCents) : { giftCents: 0, cardCents: quote.totalCents };
     const collection = await tx.paymentCollection.create({ data: { amount: quote.totalCents, description: 'default' } });
     await tx.booking.update({ where: { id: booking.id }, data: { paymentCollectionId: collection.id } });
-    await tx.paymentSession.create({ data: { paymentCollectionId: collection.id, paymentProviderId: prov.id, amount: quote.totalCents, isSelected: true, idempotencyKey: createHash('sha256').update(`tour-checkout:${h.id}`).digest('hex'), data: { state: 'initializing' } } });
+    await tx.paymentSession.create({ data: { paymentCollectionId: collection.id, paymentProviderId: prov.id, amount: split.cardCents, isSelected: true, idempotencyKey: createHash('sha256').update(`tour-checkout:${h.id}`).digest('hex'), data: { state: 'initializing', ...(gift ? { giftCardId: gift.id, giftCents: split.giftCents, giftLast4: gift.last4 } : {}) } } });
     await audit(tx, context.session?.itemId || null, 'booking.checkout_started', 'Booking', booking.id, null, { totalCents: quote.totalCents }, '', args.idempotencyKey);
     return tx.booking.findUnique({ where: { id: booking.id }, include: { paymentCollection: { include: { paymentSessions: true } } } });
   }, { timeout: 20000 });
   const session = b.paymentCollection.paymentSessions[0];
-  if (b.totalCents === 0) return { bookingRef: b.bookingRef, clientSecret: null, publishableKey: null, totalCents: 0, currencyCode: b.currencyCode };
   let data = session.data || {};
+  const giftCents = data.giftCents || 0, cardCents = b.totalCents - giftCents;
+  const shares = { totalCents: b.totalCents, giftCents, cardCents, giftLast4: data.giftLast4 || null, currencyCode: b.currencyCode };
+  if (cardCents === 0) return { bookingRef: b.bookingRef, clientSecret: null, publishableKey: null, ...shares };
   if (!data.paymentIntentId) {
-    const created = await createPayment({ provider: prov, order: { id: b.id, orderNumber: b.bookingRef }, amount: b.totalCents, currency: b.currencyCode, idempotencyKey: session.idempotencyKey });
-    data = { state: 'ready', paymentIntentId: created.paymentIntentId, clientSecret: created.clientSecret };
+    const created = await createPayment({ provider: prov, order: { id: b.id, orderNumber: b.bookingRef }, amount: cardCents, currency: b.currencyCode, idempotencyKey: session.idempotencyKey });
+    data = { ...data, state: 'ready', paymentIntentId: created.paymentIntentId, clientSecret: created.clientSecret };
     await context.prisma.paymentSession.update({ where: { id: session.id }, data: { isInitiated: true, data } });
   }
-  return { bookingRef: b.bookingRef, clientSecret: data.clientSecret, publishableKey: getPublicPaymentProviderConfig(prov.code)?.publishableKey || null, totalCents: b.totalCents, currencyCode: b.currencyCode };
+  return { bookingRef: b.bookingRef, clientSecret: data.clientSecret, publishableKey: getPublicPaymentProviderConfig(prov.code)?.publishableKey || null, ...shares };
 }
 
 export async function finalizeBookingPayment(prisma: any, bookingId: string, actorId: string | null, requestId: string) {
@@ -145,28 +154,49 @@ export async function finalizeBookingPayment(prisma: any, bookingId: string, act
   if (!booking) throw new Error('Booking not found');
   if (booking.status !== 'pending_payment') return booking;
   const session = booking.paymentCollection?.paymentSessions?.find((s: any) => s.isSelected);
+  const giftCardId: string | null = session?.data?.giftCardId || null, giftCents: number = session?.data?.giftCents || 0;
+  const cardCents = booking.totalCents - giftCents;
   let observed: any = null;
-  if (booking.totalCents > 0) {
+  if (cardCents > 0) {
     if (!session?.data?.paymentIntentId) throw new Error('Payment has not started');
     observed = await getPaymentStatus({ provider: session.paymentProvider, paymentId: session.data.paymentIntentId });
     if (observed.status !== 'succeeded') throw new Error('Payment not completed');
-    if (observed.amount !== booking.totalCents || String(observed.currencyCode).toUpperCase() !== booking.currencyCode) throw new Error('Payment amount does not match the booking; operator reconciliation required');
+    if (observed.amount !== cardCents || String(observed.currencyCode).toUpperCase() !== booking.currencyCode) throw new Error('Payment amount does not match the booking; operator reconciliation required');
   }
-  let needRefund = false;
+  let failure = '';
   const confirmed = await prisma.$transaction(async (tx: any) => {
     await lockTransactionKey(tx, `departure:${booking.departureId}`);
-    const result = await confirmBooking(tx, booking.id, actorId, requestId);
-    if (!result) { needRefund = true; await tx.booking.update({ where: { id: booking.id }, data: { status: 'cancelled' } }); }
-    if (booking.totalCents > 0) {
-      await tx.payment.create({ data: { idempotencyKey: `tour-payment:${booking.id}`, amount: booking.totalCents, currencyCode: booking.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', paymentProviderId: session.paymentProviderId, providerPaymentId: session.data.paymentIntentId, orderId: booking.id, paymentCollectionId: booking.paymentCollectionId, processedAt: new Date(), data: { paymentIntentId: session.data.paymentIntentId } } });
-      await tx.paymentCollection.update({ where: { id: booking.paymentCollectionId }, data: { authorizedAmount: booking.totalCents } });
+    // Lock order: departure, then gift card. The card is checked before seats are confirmed, so a balance spent elsewhere in the
+    // meantime cancels this booking (and refunds the bank card part) instead of confirming it short.
+    if (giftCardId) {
+      await lockTransactionKey(tx, `giftcard:${giftCardId}`);
+      const card = await tx.giftCard.findUnique({ where: { id: giftCardId } });
+      const why = unusable(card, booking.currencyCode) || (card.balanceCents < giftCents ? 'The gift card balance changed before payment finished' : null);
+      if (why) failure = `${why}; ${cardCents > 0 ? 'card payment refunded' : 'nothing was charged'}`;
+    }
+    const result = failure ? null : await confirmBooking(tx, booking.id, actorId, requestId);
+    if (!result) {
+      failure ||= `Seats were no longer available; ${cardCents > 0 ? 'payment refunded' : 'nothing was charged'}`;
+      await tx.booking.update({ where: { id: booking.id }, data: { status: 'cancelled' } });
+      await tx.inventoryHold.updateMany({ where: { id: booking.holdId, status: 'active' }, data: { status: 'released' } });
+    }
+    // Refunds go newest payment first, so the gift card part is recorded a millisecond after the bank card part: a refund puts value
+    // back on the gift card first and reaches the bank card only for what the gift card did not cover (no cash-out of gift value).
+    const paidAt = new Date();
+    if (cardCents > 0) {
+      await tx.payment.create({ data: { createdAt: paidAt, idempotencyKey: `tour-payment:${booking.id}`, amount: cardCents, currencyCode: booking.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', paymentProviderId: session.paymentProviderId, providerPaymentId: session.data.paymentIntentId, orderId: booking.id, paymentCollectionId: booking.paymentCollectionId, processedAt: new Date(), isSplitPayment: giftCents > 0, data: { paymentIntentId: session.data.paymentIntentId } } });
+      await tx.paymentCollection.update({ where: { id: booking.paymentCollectionId }, data: { authorizedAmount: result ? booking.totalCents : cardCents } });
       await tx.paymentSession.update({ where: { id: session.id }, data: { paymentAuthorizedAt: new Date(), data: { ...session.data, state: 'captured' } } });
+    }
+    if (result && giftCents > 0) {
+      const pay = await tx.payment.create({ data: { createdAt: new Date(paidAt.getTime() + 1), idempotencyKey: `tour-gift:${booking.id}`, amount: giftCents, currencyCode: booking.currencyCode, status: 'succeeded', paymentMethod: 'gift_card', orderId: booking.id, paymentCollectionId: booking.paymentCollectionId, processedAt: new Date(), isSplitPayment: cardCents > 0, data: { giftCardId } } });
+      await debitCard(tx, { cardId: giftCardId!, amount: giftCents, currencyCode: booking.currencyCode, key: `gift-redeem:${booking.id}`, booking, paymentId: pay.id, actorId });
     }
     return result;
   }, { timeout: 20000 });
-  if (needRefund) {
-    await issueRefund(prisma, { bookingId: booking.id, amount: booking.totalCents, reason: 'Seats no longer available after payment', key: `late-pay:${booking.id}`, actorId: null, cancel: true });
-    throw new Error('Seats were no longer available; payment refunded');
+  if (failure) {
+    if (cardCents > 0) await issueRefund(prisma, { bookingId: booking.id, amount: cardCents, reason: failure, key: `late-pay:${booking.id}`, actorId: null, cancel: true });
+    throw new Error(failure);
   }
   return confirmed;
 }
@@ -247,6 +277,7 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
   for (const leg of legs) {
     if (leg.status === 'succeeded') continue;
     const payment = await prisma.payment.findUnique({ where: { id: leg.paymentId }, include: { paymentProvider: true } });
+    if (payment.paymentMethod === 'gift_card') { outcomes.set(leg.id, { status: 'succeeded', id: `giftcard:${leg.id}`, giftCardId: payment.data?.giftCardId }); continue; }
     if (payment.paymentMethod === 'cash' || !payment.providerPaymentId) { outcomes.set(leg.id, { status: 'succeeded', id: `manual:${leg.id}` }); continue; }
     try {
       const prov = payment.paymentProvider || await provider(prisma);
@@ -265,6 +296,7 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
       await tx.refund.update({ where: { id: leg.id }, data: { status: outcome.status, providerRefundId: outcome.id || '', processedAt: outcome.status === 'succeeded' ? new Date() : null } });
       if (outcome.status !== 'succeeded') { settled = false; continue; }
       newlySettled = true;
+      if (outcome.giftCardId) await returnToCard(tx, { cardId: outcome.giftCardId, amount: leg.amount, key: `gift-return:${leg.id}`, booking: b, paymentId: leg.paymentId, reason: a.reason, actorId: a.actorId });
       const p = await tx.payment.findUnique({ where: { id: leg.paymentId } });
       const refunded = (p.refundedAmount || 0) + leg.amount;
       await tx.payment.update({ where: { id: p.id }, data: { refundedAmount: refunded, status: refunded >= p.amount ? 'refunded' : 'partially_refunded' } });

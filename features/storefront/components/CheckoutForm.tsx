@@ -6,7 +6,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { completeCheckout, startCheckout } from '../lib/data'
+import { completeCheckout, giftCardBalance, startCheckout } from '../lib/data'
 import { money, when } from '../lib/format'
 
 function Pay({ bookingRef, email, onError }: { bookingRef: string; email: string; onError: (m: string) => void }) {
@@ -36,6 +36,15 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
   const [ages, setAges] = React.useState<string[]>(people.map(() => ''))
   const [error, setError] = React.useState('')
   const [checkout, setCheckout] = React.useState<any>(null)
+  const [giftCode, setGiftCode] = React.useState(''), [gift, setGift] = React.useState<any>(null), [giftError, setGiftError] = React.useState(''), [giftOpen, setGiftOpen] = React.useState(false)
+  const giftCents = gift ? Math.min(gift.balanceCents, quote.totalCents) : 0
+  const applyGift = async () => {
+    setGiftError(''); setGift(null)
+    const r = await giftCardBalance(giftCode)
+    if (!r.ok) return setGiftError(r.error)
+    if (r.card.currencyCode !== quote.currencyCode) return setGiftError(`This gift card is in ${r.card.currencyCode}`)
+    setGift({ ...r.card, code: giftCode })
+  }
   const [left, setLeft] = React.useState(() => Math.max(0, new Date(hold.expiresAt).getTime() - Date.now()))
   const key = React.useRef(crypto.randomUUID())
   const stripePromise = React.useMemo(() => (publishableKey ? loadStripe(publishableKey) : null), [publishableKey])
@@ -43,7 +52,7 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
 
   const begin = async () => {
     setError('')
-    const r = await startCheckout({ holdId, lead, participants: people.map((p, i) => ({ ticketTypeId: p.ticketTypeId, fullName: names[i] || (i === 0 ? lead.name : ''), age: ages[i] ? Number(ages[i]) : undefined, email: i === 0 ? lead.email : undefined })) }, key.current)
+    const r = await startCheckout({ holdId, lead, giftCardCode: gift?.code || undefined, participants: people.map((p, i) => ({ ticketTypeId: p.ticketTypeId, fullName: names[i] || (i === 0 ? lead.name : ''), age: ages[i] ? Number(ages[i]) : undefined, email: i === 0 ? lead.email : undefined })) }, key.current)
     if (!r.ok) return setError(r.error)
     if (!r.checkout.clientSecret) { const done = await completeCheckout(r.checkout.bookingRef, `complete:${r.checkout.bookingRef}`); sessionStorage.setItem('tg_email', lead.email); return done.ok ? router.push(`/bookings/${r.checkout.bookingRef}`) : setError(done.error) }
     setCheckout(r.checkout)
@@ -55,7 +64,11 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
       <ul className="space-y-1 text-sm">{quote.lines.map((l: any, i: number) => <li key={i} className="flex justify-between gap-2"><span>{l.qty} × {l.name}</span><span className="font-mono">{money(l.unitPriceCents * l.qty, quote.currencyCode)}</span></li>)}
         {quote.discountCents > 0 && <li className="flex justify-between"><span>Discount</span><span className="font-mono">−{money(quote.discountCents, quote.currencyCode)}</span></li>}
         {quote.taxCents > 0 && <li className="flex justify-between"><span>Tax</span><span className="font-mono">{money(quote.taxCents, quote.currencyCode)}</span></li>}
-        <li className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="font-mono">{money(quote.totalCents, quote.currencyCode)}</span></li></ul>
+        <li className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="font-mono">{money(quote.totalCents, quote.currencyCode)}</span></li>
+        {(checkout?.giftCents || giftCents) > 0 && <>
+          <li className="flex justify-between gap-2" data-gift-applied><span>Gift card ····{checkout?.giftLast4 || gift?.last4}</span><span className="font-mono">−{money(checkout?.giftCents ?? giftCents, quote.currencyCode)}</span></li>
+          <li className="flex justify-between gap-2 font-semibold"><span>To pay by card</span><span className="font-mono">{money(checkout ? checkout.cardCents : quote.totalCents - giftCents, quote.currencyCode)}</span></li>
+        </>}</ul>
       {left === 0 && <p className="text-sm text-rose-600">Hold expired. Choose seats again.</p>}
       {!checkout ? (
         <div className="space-y-3">
@@ -67,8 +80,16 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
           {people.map((p, i) => (
             <div key={i} className="grid grid-cols-[1fr_5rem] gap-2"><Input placeholder={`${p.label} ${i + 1} name`} value={names[i]} onChange={(e) => setNames(names.map((n, j) => (j === i ? e.target.value : n)))} /><Input inputMode="numeric" placeholder="Age" value={ages[i]} onChange={(e) => setAges(ages.map((n, j) => (j === i ? e.target.value : n)))} /></div>
           ))}
+          <div className="space-y-2 border-t pt-3">
+            {!giftOpen && !gift ? <button type="button" className="text-sm underline underline-offset-4" onClick={() => setGiftOpen(true)}>Have a gift card?</button> : gift ? (
+              <p className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>Gift card ····{gift.last4} pays {money(giftCents, quote.currencyCode)}{gift.balanceCents > giftCents ? `, ${money(gift.balanceCents - giftCents, quote.currencyCode)} stays on the card` : ''}</span><button type="button" className="underline underline-offset-4" onClick={() => { setGift(null); setGiftCode('') }}>Remove</button></p>
+            ) : (
+              <div className="flex gap-2"><Input aria-label="Gift card code" placeholder="GC-XXXX-XXXX-XXXX" autoCapitalize="characters" value={giftCode} onChange={(e) => setGiftCode(e.target.value)} /><Button type="button" variant="outline" disabled={giftCode.replace(/[^A-Za-z0-9]/g, '').length < 12} onClick={applyGift}>Apply</Button></div>
+            )}
+            {giftError && <p className="text-sm text-rose-600">{giftError}</p>}
+          </div>
           {error && <p className="text-sm text-rose-600">{error}</p>}
-          <Button className="w-full" disabled={left === 0 || !lead.name || !lead.email} onClick={begin}>Continue to payment</Button>
+          <Button className="w-full" disabled={left === 0 || !lead.name || !lead.email} onClick={begin}>{giftCents >= quote.totalCents && quote.totalCents > 0 ? 'Book with gift card' : 'Continue to payment'}</Button>
         </div>
       ) : stripePromise ? (
         <Elements stripe={stripePromise} options={{ clientSecret: checkout.clientSecret }}><Pay bookingRef={checkout.bookingRef} email={lead.email} onError={setError} />{error && <p className="mt-2 text-sm text-rose-600">{error}</p>}</Elements>

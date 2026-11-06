@@ -7,7 +7,7 @@ async function main() {
   const tourIds = tours.map((t: any) => t.id);
   const deps = await p.departure.findMany({ where: { tourId: { in: tourIds } }, select: { id: true } });
   const uiBookings = await p.booking.findMany({ where: { guestEmail: { in: ['depth-ui@test.example', 'final-ui@test.example', 'guest@test.example', 'depth-timing@test.example', 'recover-ui@test.example', 'depth-wx-rebook@test.example', 'depth-wx-refund@test.example', 'depth-wx-out@test.example', 'depth-wv-lead@test.example', 'depth-ui-move@test.example', 'depth-wl-ana@test.example', 'depth-wl-ben@test.example', 'depth-wl-cy@test.example'] } }, select: { id: true } });
-  const pcUi = await p.booking.findMany({ where: { guestEmail: { startsWith: 'depth-pc-' } }, select: { id: true } });
+  const pcUi = await p.booking.findMany({ where: { OR: [{ guestEmail: { startsWith: 'depth-pc-' } }, { guestEmail: { startsWith: 'depth-gc-' } }] }, select: { id: true } });
   const depIds = deps.map((d: any) => d.id);
   const bookings = await p.booking.findMany({ where: { OR: [{ departureId: { in: depIds } }, { id: { in: [...uiBookings, ...pcUi].map((b: any) => b.id) } }] }, select: { id: true } });
   const bIds = bookings.map((b: any) => b.id);
@@ -68,6 +68,11 @@ async function main() {
     await tx.waiverTemplate.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.resource.deleteMany({ where: { name: { startsWith: 'depth-' } } });
     await tx.channel.deleteMany({ where: { id: { in: cIds } } });
+    // Gift cards issued by depth-* staff (runtime and UI fixtures), their ledgers and audit.
+    const cards = (await tx.giftCard.findMany({ where: { issuedById: { in: users.map((u: any) => u.id) } }, select: { id: true } })).map((c: any) => c.id);
+    await tx.auditEvent.deleteMany({ where: { targetList: 'GiftCard', targetId: { in: cards } } });
+    await tx.giftCardEntry.deleteMany({ where: { giftCardId: { in: cards } } });
+    await tx.giftCard.deleteMany({ where: { id: { in: cards } } });
     await tx.user.deleteMany({ where: { id: { in: users.map((u: any) => u.id) } } });
     await tx.role.deleteMany({ where: { id: { in: roles.map((r: any) => r.id) } } });
     // Weather-cancellation fixtures (scripts/weather-cancellation.runtime.ts): refund audit rows, notices of already-deleted bookings, the approval.

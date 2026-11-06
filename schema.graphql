@@ -5197,6 +5197,274 @@ input ManagerApprovalCreateInput {
   updatedAt: DateTime
 }
 
+type GiftCard {
+  id: ID!
+  codeHash: String
+  last4: String
+  status: GiftCardStatusType
+  initialCents: Int
+  balanceCents: Int
+  currencyCode: String
+  expiresAt: DateTime
+  fundedBy: GiftCardFundedByType
+  recipientName: String
+  recipientEmail: String
+  note: String
+  issuedById: String
+  replacesId: String
+  entries(where: GiftCardEntryWhereInput! = {}, orderBy: [GiftCardEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: GiftCardEntryWhereUniqueInput): [GiftCardEntry!]
+  entriesCount(where: GiftCardEntryWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum GiftCardStatusType {
+  active
+  void
+}
+
+enum GiftCardFundedByType {
+  cash
+  complimentary
+}
+
+input GiftCardWhereUniqueInput {
+  id: ID
+  codeHash: String
+}
+
+input GiftCardWhereInput {
+  AND: [GiftCardWhereInput!]
+  OR: [GiftCardWhereInput!]
+  NOT: [GiftCardWhereInput!]
+  id: IDFilter
+  codeHash: StringFilter
+  last4: StringFilter
+  status: GiftCardStatusTypeNullableFilter
+  initialCents: IntNullableFilter
+  balanceCents: IntNullableFilter
+  currencyCode: StringFilter
+  expiresAt: DateTimeNullableFilter
+  fundedBy: GiftCardFundedByTypeNullableFilter
+  recipientName: StringFilter
+  recipientEmail: StringFilter
+  note: StringFilter
+  issuedById: StringFilter
+  replacesId: StringFilter
+  entries: GiftCardEntryManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input GiftCardStatusTypeNullableFilter {
+  equals: GiftCardStatusType
+  in: [GiftCardStatusType!]
+  notIn: [GiftCardStatusType!]
+  not: GiftCardStatusTypeNullableFilter
+}
+
+input GiftCardFundedByTypeNullableFilter {
+  equals: GiftCardFundedByType
+  in: [GiftCardFundedByType!]
+  notIn: [GiftCardFundedByType!]
+  not: GiftCardFundedByTypeNullableFilter
+}
+
+input GiftCardEntryManyRelationFilter {
+  every: GiftCardEntryWhereInput
+  some: GiftCardEntryWhereInput
+  none: GiftCardEntryWhereInput
+}
+
+input GiftCardOrderByInput {
+  id: OrderDirection
+  codeHash: OrderDirection
+  last4: OrderDirection
+  status: OrderDirection
+  initialCents: OrderDirection
+  balanceCents: OrderDirection
+  currencyCode: OrderDirection
+  expiresAt: OrderDirection
+  fundedBy: OrderDirection
+  recipientName: OrderDirection
+  recipientEmail: OrderDirection
+  note: OrderDirection
+  issuedById: OrderDirection
+  replacesId: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input GiftCardUpdateInput {
+  codeHash: String
+  last4: String
+  status: GiftCardStatusType
+  initialCents: Int
+  balanceCents: Int
+  currencyCode: String
+  expiresAt: DateTime
+  fundedBy: GiftCardFundedByType
+  recipientName: String
+  recipientEmail: String
+  note: String
+  issuedById: String
+  replacesId: String
+  entries: GiftCardEntryRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input GiftCardEntryRelateToManyForUpdateInput {
+  disconnect: [GiftCardEntryWhereUniqueInput!]
+  set: [GiftCardEntryWhereUniqueInput!]
+  create: [GiftCardEntryCreateInput!]
+  connect: [GiftCardEntryWhereUniqueInput!]
+}
+
+input GiftCardUpdateArgs {
+  where: GiftCardWhereUniqueInput!
+  data: GiftCardUpdateInput!
+}
+
+input GiftCardCreateInput {
+  codeHash: String
+  last4: String
+  status: GiftCardStatusType
+  initialCents: Int
+  balanceCents: Int
+  currencyCode: String
+  expiresAt: DateTime
+  fundedBy: GiftCardFundedByType
+  recipientName: String
+  recipientEmail: String
+  note: String
+  issuedById: String
+  replacesId: String
+  entries: GiftCardEntryRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input GiftCardEntryRelateToManyForCreateInput {
+  create: [GiftCardEntryCreateInput!]
+  connect: [GiftCardEntryWhereUniqueInput!]
+}
+
+type GiftCardEntry {
+  id: ID!
+  giftCard: GiftCard
+  kind: GiftCardEntryKindType
+  amountCents: Int
+  balanceAfterCents: Int
+  bookingId: String
+  bookingRef: String
+  paymentId: String
+  idempotencyKey: String
+  reason: String
+  actorId: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum GiftCardEntryKindType {
+  issue
+  redeem
+  return
+  void
+}
+
+input GiftCardEntryWhereUniqueInput {
+  id: ID
+  idempotencyKey: String
+}
+
+input GiftCardEntryWhereInput {
+  AND: [GiftCardEntryWhereInput!]
+  OR: [GiftCardEntryWhereInput!]
+  NOT: [GiftCardEntryWhereInput!]
+  id: IDFilter
+  giftCard: GiftCardWhereInput
+  kind: GiftCardEntryKindTypeNullableFilter
+  amountCents: IntFilter
+  balanceAfterCents: IntNullableFilter
+  bookingId: StringFilter
+  bookingRef: StringFilter
+  paymentId: StringFilter
+  idempotencyKey: StringFilter
+  reason: StringFilter
+  actorId: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input GiftCardEntryKindTypeNullableFilter {
+  equals: GiftCardEntryKindType
+  in: [GiftCardEntryKindType!]
+  notIn: [GiftCardEntryKindType!]
+  not: GiftCardEntryKindTypeNullableFilter
+}
+
+input GiftCardEntryOrderByInput {
+  id: OrderDirection
+  kind: OrderDirection
+  amountCents: OrderDirection
+  balanceAfterCents: OrderDirection
+  bookingId: OrderDirection
+  bookingRef: OrderDirection
+  paymentId: OrderDirection
+  idempotencyKey: OrderDirection
+  reason: OrderDirection
+  actorId: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input GiftCardEntryUpdateInput {
+  giftCard: GiftCardRelateToOneForUpdateInput
+  kind: GiftCardEntryKindType
+  amountCents: Int
+  balanceAfterCents: Int
+  bookingId: String
+  bookingRef: String
+  paymentId: String
+  idempotencyKey: String
+  reason: String
+  actorId: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input GiftCardRelateToOneForUpdateInput {
+  create: GiftCardCreateInput
+  connect: GiftCardWhereUniqueInput
+  disconnect: Boolean
+}
+
+input GiftCardEntryUpdateArgs {
+  where: GiftCardEntryWhereUniqueInput!
+  data: GiftCardEntryUpdateInput!
+}
+
+input GiftCardEntryCreateInput {
+  giftCard: GiftCardRelateToOneForCreateInput
+  kind: GiftCardEntryKindType
+  amountCents: Int
+  balanceAfterCents: Int
+  bookingId: String
+  bookingRef: String
+  paymentId: String
+  idempotencyKey: String
+  reason: String
+  actorId: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input GiftCardRelateToOneForCreateInput {
+  create: GiftCardCreateInput
+  connect: GiftCardWhereUniqueInput
+}
+
 """
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
@@ -5461,6 +5729,18 @@ type Mutation {
   updateManagerApprovals(data: [ManagerApprovalUpdateArgs!]!): [ManagerApproval]
   deleteManagerApproval(where: ManagerApprovalWhereUniqueInput!): ManagerApproval
   deleteManagerApprovals(where: [ManagerApprovalWhereUniqueInput!]!): [ManagerApproval]
+  createGiftCard(data: GiftCardCreateInput!): GiftCard
+  createGiftCards(data: [GiftCardCreateInput!]!): [GiftCard]
+  updateGiftCard(where: GiftCardWhereUniqueInput!, data: GiftCardUpdateInput!): GiftCard
+  updateGiftCards(data: [GiftCardUpdateArgs!]!): [GiftCard]
+  deleteGiftCard(where: GiftCardWhereUniqueInput!): GiftCard
+  deleteGiftCards(where: [GiftCardWhereUniqueInput!]!): [GiftCard]
+  createGiftCardEntry(data: GiftCardEntryCreateInput!): GiftCardEntry
+  createGiftCardEntries(data: [GiftCardEntryCreateInput!]!): [GiftCardEntry]
+  updateGiftCardEntry(where: GiftCardEntryWhereUniqueInput!, data: GiftCardEntryUpdateInput!): GiftCardEntry
+  updateGiftCardEntries(data: [GiftCardEntryUpdateArgs!]!): [GiftCardEntry]
+  deleteGiftCardEntry(where: GiftCardEntryWhereUniqueInput!): GiftCardEntry
+  deleteGiftCardEntries(where: [GiftCardEntryWhereUniqueInput!]!): [GiftCardEntry]
   endSession: Boolean!
   authenticateUserWithPassword(email: String!, password: String!): UserAuthenticationWithPasswordResult
   createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
@@ -5484,6 +5764,9 @@ type Mutation {
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
   resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
   joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
+  issueGiftCard(input: IssueGiftCardInput!, idempotencyKey: String!): JSON
+  voidGiftCard(input: VoidGiftCardInput!, idempotencyKey: String!): JSON
+  revealGiftCardCode(id: ID!): JSON
   addToWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
   claimWaitlistOffer(entryId: ID!, token: String!, cartToken: String!): JSON
   leaveWaitlist(entryId: ID!, token: String!, idempotencyKey: String!): JSON
@@ -5670,6 +5953,12 @@ type Query {
   managerApproval(where: ManagerApprovalWhereUniqueInput!): ManagerApproval
   managerApprovals(where: ManagerApprovalWhereInput! = {}, orderBy: [ManagerApprovalOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ManagerApprovalWhereUniqueInput): [ManagerApproval!]
   managerApprovalsCount(where: ManagerApprovalWhereInput! = {}): Int
+  giftCard(where: GiftCardWhereUniqueInput!): GiftCard
+  giftCards(where: GiftCardWhereInput! = {}, orderBy: [GiftCardOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: GiftCardWhereUniqueInput): [GiftCard!]
+  giftCardsCount(where: GiftCardWhereInput! = {}): Int
+  giftCardEntry(where: GiftCardEntryWhereUniqueInput!): GiftCardEntry
+  giftCardEntries(where: GiftCardEntryWhereInput! = {}, orderBy: [GiftCardEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: GiftCardEntryWhereUniqueInput): [GiftCardEntry!]
+  giftCardEntriesCount(where: GiftCardEntryWhereInput! = {}): Int
   keystone: KeystoneMeta!
   authenticatedItem: AuthenticatedItem
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
@@ -5694,6 +5983,8 @@ type Query {
   salesReport(from: String!, to: String!, basis: String): JSON
   waitlistStatus(entryId: ID!, token: String!): JSON
   waitlistBoard(status: String): JSON
+  giftCardBoard(search: String): JSON
+  giftCardBalance(code: String!): JSON
   partyChangeQuote(bookingRef: String!, token: String!, input: PartyChangeInput!): JSON
   bookingParty(bookingId: ID!): JSON
   bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
@@ -5878,6 +6169,21 @@ input StartBookingCheckoutInput {
   token: String!
   lead: BookingLeadInput!
   participants: [BookingParticipantInput!]!
+  giftCardCode: String
+}
+
+input IssueGiftCardInput {
+  amountCents: Int!
+  fundedBy: String!
+  recipientName: String
+  recipientEmail: String
+  expiresAt: String
+  note: String
+}
+
+input VoidGiftCardInput {
+  id: ID!
+  reason: String!
 }
 
 input CompleteBookingCheckoutInput {

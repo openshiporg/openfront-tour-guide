@@ -39,7 +39,12 @@ export async function getHold(holdId: string) {
   const r = await call<{ checkoutHold: any }>(`query($h:ID!,$t:String!){ checkoutHold(holdId:$h, token:$t) }`, { h: holdId, t: token })
   return r.ok ? r.data.checkoutHold : null
 }
-export async function startCheckout(input: { holdId: string; lead: any; participants: any[] }, key: string) {
+// What a gift card code is worth before paying (balance, expiry). Wrong and void codes give the same answer.
+export async function giftCardBalance(code: string) {
+  const r = await call<{ giftCardBalance: any }>(`query($c:String!){ giftCardBalance(code:$c) }`, { c: code })
+  return r.ok ? { ok: true as const, card: r.data.giftCardBalance } : r
+}
+export async function startCheckout(input: { holdId: string; lead: any; participants: any[]; giftCardCode?: string }, key: string) {
   const token = await proof()
   const r = await call<{ startBookingCheckout: any }>(`mutation($i:StartBookingCheckoutInput!,$k:String!){ startBookingCheckout(input:$i, idempotencyKey:$k) }`, { i: { ...input, token }, k: key })
   return r.ok ? { ok: true as const, checkout: r.data.startBookingCheckout } : r
