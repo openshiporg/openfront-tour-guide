@@ -1,4 +1,4 @@
-import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon } from 'lucide-react'
+import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon, Store } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -29,6 +29,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Customers', href: '/platform/customers', description: 'Guests and their bookings.', icon: UserRound, group: 'operations' },
   { title: 'Payment providers', href: '/platform/payment-providers', description: 'Payment gateways and settings.', icon: CreditCard, group: 'settings' },
   { title: 'Settings', href: '/platform/settings', description: 'Operator, tax and refund approval threshold.', icon: Settings, group: 'settings' },
+  { title: 'Store', href: '/platform/store', description: 'Configure store settings, logo, and branding.', icon: Store, group: 'settings' },
 ]
 export const platformStandaloneItems = platformNavItems.filter((i) => i.group === 'standalone')
 export const platformNavGroups: PlatformNavGroup[] = [

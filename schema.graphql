@@ -4007,6 +4007,8 @@ type StoreSettings {
   waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
+  logoIcon: String
+  logoColor: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -4029,6 +4031,8 @@ input StoreSettingsWhereInput {
   waitlistOfferHours: IntNullableFilter
   taxBps: IntNullableFilter
   settingsKey: StringFilter
+  logoIcon: StringFilter
+  logoColor: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -4043,6 +4047,8 @@ input StoreSettingsOrderByInput {
   waitlistOfferHours: OrderDirection
   taxBps: OrderDirection
   settingsKey: OrderDirection
+  logoIcon: OrderDirection
+  logoColor: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -4056,6 +4062,8 @@ input StoreSettingsUpdateInput {
   waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
+  logoIcon: String
+  logoColor: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -4074,6 +4082,8 @@ input StoreSettingsCreateInput {
   waitlistOfferHours: Int
   taxBps: Int
   settingsKey: String
+  logoIcon: String
+  logoColor: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -5990,6 +6000,7 @@ type Query {
   bookingParty(bookingId: ID!): JSON
   bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
+  storeLogo: StoreLogo!
 }
 
 union AuthenticatedItem = User
@@ -6364,4 +6375,9 @@ input SettlementTransitionInput {
   id: ID!
   status: String!
   reference: String
+}
+
+type StoreLogo {
+  logoIcon: String!
+  logoColor: String!
 }

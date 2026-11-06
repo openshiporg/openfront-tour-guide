@@ -4,6 +4,7 @@ import { assignGuide, respondToAssignment, assignResource, checkInParticipant } 
 import { createChannelBooking, refreshDepartureStatus, refundBooking } from './tour-checkout';
 import { weatherCancelDeparture } from './tour-weather';
 import { permissionNames } from '../access';
+import { DEFAULT_STORE_LOGO_COLOR, DEFAULT_STORE_LOGO_ICON } from '../../platform/store-settings/lib/store-logo';
 
 const ENTITIES = ['settings', 'paymentProvider', 'role', 'meetingPoint', 'cancellationPolicy', 'waiver', 'promoCode', 'channel', 'resource', 'guide', 'tour'] as const;
 
@@ -14,7 +15,8 @@ export async function ensureTourOnboardingRecord(_r: any, { entity, data }: { en
   const p = context.prisma;
   const ensure = async (model: string, where: any, create: any) => (await p[model].findFirst({ where })) || p[model].create({ data: create });
   switch (entity) {
-    case 'settings': { const row = await ensure('storeSettings', { settingsKey: 'operator' }, { ...data, settingsKey: 'operator' }); return { id: row.id }; }
+    // As in E-commerce onboarding: the store always gets a registry logo and hue; seed values win when present.
+    case 'settings': { const row = await ensure('storeSettings', { settingsKey: 'operator' }, { logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, ...data, settingsKey: 'operator' }); return { id: row.id }; }
     case 'paymentProvider': {
       const row = await ensure('paymentProvider', { code: data.code }, { name: data.name, code: data.code, isInstalled: true, credentials: {}, createPaymentFunction: 'stripe', capturePaymentFunction: 'stripe', refundPaymentFunction: 'stripe', getPaymentStatusFunction: 'stripe', generatePaymentLinkFunction: 'stripe', handleWebhookFunction: 'stripe' });
       return { id: row.id };

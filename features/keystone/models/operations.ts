@@ -1,3 +1,4 @@
+import { storeLogoFields } from "./storeLogoFields";
 import { permissions } from '../access';
 import { text, integer, checkbox, json, timestamp } from '@keystone-6/core/fields';
 import { domainList, name, state, money, currency, rel } from './domainFields';
@@ -13,7 +14,7 @@ export const WaitlistEntry = domainList('canManageBookings', {
   bookingRef: text(), note: text(),
 }, true);
 export const NotificationPreference = domainList('canManageBookings', { email: text({ isIndexed: 'unique' }), bookingUpdates: checkbox({ defaultValue: true }), weatherCancellation: checkbox({ defaultValue: true }) });
-const settingsList = domainList('canManageSettings', { name: name(), timezone: text({ defaultValue: 'America/New_York' }), address: text(), currencyCode: currency(), refundApprovalThresholdCents: integer({ defaultValue: 10000, validation: { min: 0 } }), waitlistOfferHours: integer({ defaultValue: 12, validation: { min: 1, max: 168 } }), taxBps: integer({ defaultValue: 0, validation: { min: 0, max: 10000 } }), settingsKey: text({ defaultValue: 'operator', isIndexed: 'unique' }) });
+const settingsList = domainList('canManageSettings', { name: name(), timezone: text({ defaultValue: 'America/New_York' }), address: text(), currencyCode: currency(), refundApprovalThresholdCents: integer({ defaultValue: 10000, validation: { min: 0 } }), waitlistOfferHours: integer({ defaultValue: 12, validation: { min: 1, max: 168 } }), taxBps: integer({ defaultValue: 0, validation: { min: 0, max: 10000 } }), settingsKey: text({ defaultValue: 'operator', isIndexed: 'unique' }), ...storeLogoFields });
 // Writing operator settings (tax, currency, refund threshold) needs canManageSettings. Reading stays open to the roles whose screens
 // show those values (the refund threshold on Bookings), so refund and booking staff are not locked out of their own screens.
 const readsSettings = (args: any) => permissions.canManageSettings(args) || permissions.canIssueRefunds(args) || permissions.canManageBookings(args);
