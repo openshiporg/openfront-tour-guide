@@ -1,3 +1,4 @@
+import { assertMove } from '../lib/stateMachines';
 import { authorize, command, audit, departureOccupancy, lockTransactionKey } from '../lib/tour-command';
 import { assertDepartureAccess } from '../lib/tour-scope';
 import { peakConcurrentResourceUnits } from '../lib/resourceCapacity';
@@ -135,12 +136,38 @@ export async function markNoShow(_r: any, args: any, context: any) {
     await audit(tx, context.session.itemId, 'booking.no_show', 'Booking', booking.id, { status: 'confirmed' }, { status: 'no_show' }); return { id: booking.id };
   });
 }
+// Office undo for a mistaken no show (the manifest tells devices to do this when a synced tap conflicts). Only while the departure has not completed.
+export async function undoNoShow(_r: any, args: any, context: any) {
+  const actor = await authorize(context, 'canCheckIn'); const i = args.input;
+  const booking = await context.prisma.booking.findUnique({ where: { id: i.bookingId } });
+  if (!booking) throw new Error('Booking not found');
+  await assertDepartureAccess(context.prisma, actor, booking.departureId);
+  return command(context, args.idempotencyKey, 'undoNoShow', i, [`departure:${booking.departureId}`], async tx => {
+    const d = await tx.departure.findUnique({ where: { id: booking.departureId } });
+    if (['completed', 'cancelled', 'weather_cancelled'].includes(d.status)) throw new Error('This departure is finished; the no show stands');
+    assertMove('booking', 'no_show', 'confirmed');
+    const change = await tx.booking.updateMany({ where: { id: booking.id, status: 'no_show' }, data: { status: 'confirmed' } });
+    if (change.count !== 1) throw new Error('Only a booking marked no show can be undone');
+    await tx.participant.updateMany({ where: { bookingId: booking.id, checkInStatus: 'no_show' }, data: { checkInStatus: 'pending' } });
+    await audit(tx, context.session.itemId, 'booking.no_show_undone', 'Booking', booking.id, { status: 'no_show' }, { status: 'confirmed' }); return { id: booking.id };
+  });
+}
 export async function closeDeparture(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures'); const i = args.input;
   return command(context, args.idempotencyKey, 'closeDeparture', i, [`departure:${i.departureId}`], async tx => {
     const d = await tx.departure.findUnique({ where: { id: i.departureId }, include: { assignedGuides: true } });
     if (!d || !['closed','in_progress'].includes(d.status) || d.endAt > new Date()) throw new Error('Only an ended closed/in-progress departure can complete');
+    assertMove('departure', d.status, 'completed');
     await tx.departure.update({ where: { id: d.id }, data: { status: 'completed' } });
+    // Nobody checked in and nobody marked a no show: the tour has run, so those bookings are no shows (not left 'confirmed' on a finished departure).
+    const missed = await tx.booking.findMany({ where: { departureId: d.id, status: 'confirmed' }, select: { id: true } });
+    if (missed.length) {
+      await tx.booking.updateMany({ where: { id: { in: missed.map((b: any) => b.id) }, status: 'confirmed' }, data: { status: 'no_show' } });
+      await tx.participant.updateMany({ where: { bookingId: { in: missed.map((b: any) => b.id) }, checkInStatus: 'pending' }, data: { checkInStatus: 'no_show' } });
+      await audit(tx, context.session.itemId, 'departure.unattended_no_show', 'Departure', d.id, null, { bookings: missed.length });
+    }
+    // A guide who never answered the offer is released; the offer cannot be accepted for a departure that is over.
+    await tx.guideAssignment.updateMany({ where: { departureId: d.id, status: 'offered' }, data: { status: 'cancelled' } });
     // A booking completes only with nothing owed: captured payments cover the net total, or the channel collects.
     const toComplete = await tx.booking.findMany({ where: { departureId: d.id, status: 'checked_in' }, include: { channel: true, payments: { where: { status: { in: ['succeeded', 'partially_refunded', 'refunded'] } } } } });
     for (const b of toComplete) {

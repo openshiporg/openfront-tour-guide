@@ -4,7 +4,7 @@ import redirectToInit from "./redirectToInit";
 import { storeLogoTypeDefs, storeLogo } from "./storeLogo";
 import { toursOnSale, tourAvailability, createDepartureHold, waiverForToken } from './tour-catalog';
 import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyBooking, refundBooking, cancelDeparture, rebookWithCredit, createChannelBooking, operatorBookingByKey, signWaiver, sweepDepartures, checkoutHold, requestRefundApproval, approveRefund } from './tour-checkout';
-import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, syncOfflineCheckIns, closeDeparture, generateChannelStatement } from './tour-operations';
+import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
 import { myDepartures, pickupSheet, dayPickupSheet } from './tour-guide-day';
@@ -114,6 +114,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
         syncOfflineCheckIns(input: SyncOfflineCheckInsInput!, idempotencyKey: String!): JSON
         markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
+        undoNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
         resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
         joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
         issueGiftCard(input: IssueGiftCardInput!, idempotencyKey: String!): JSON
@@ -151,7 +152,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       Query: { storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
-        generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, syncOfflineCheckIns, resetGuestLink, moveBooking,
+        generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, resetGuestLink, moveBooking,
         transitionGuidePayout, transitionChannelStatement,
         changeParty, completePartyChange, changeBookingParty,
         issueGiftCard, voidGiftCard, revealGiftCardCode,

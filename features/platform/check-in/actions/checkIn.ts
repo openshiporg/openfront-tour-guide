@@ -17,6 +17,11 @@ export async function noShowAction(bookingId: string) {
   revalidatePath('/dashboard/platform/check-in')
   return result
 }
+export async function undoNoShowAction(bookingId: string) {
+  const result = await platformMutation(`mutation($input:BookingActionInput!,$idempotencyKey:String!){ undoNoShow(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { bookingId } })
+  revalidatePath('/dashboard/platform/check-in')
+  return result
+}
 export async function getParticipantWaiver(participantId: string) {
   const data = await platformQuery<{ participantWaiver: { participantId: string; participantName: string; age: number | null; status: string; name: string; version: number; text: string } }>(`query($id:ID!){ participantWaiver(participantId:$id) }`, { id: participantId })
   return data?.participantWaiver || null

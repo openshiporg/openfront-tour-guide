@@ -24,6 +24,7 @@ async function weatherCancelCore(args: any, context: any) {
     if (d.status === 'cancelled') throw new Error('Departure is already cancelled for another reason');
     if (d.status !== 'weather_cancelled') {
       await tx.departure.update({ where: { id: d.id }, data: { status: 'weather_cancelled' } });
+      await tx.operationalTask.updateMany({ where: { taskKey: `min:${d.id}`, status: 'open' }, data: { status: 'resolved' } });
       const holds = await tx.inventoryHold.findMany({ where: { departureId: d.id, status: 'active' }, select: { id: true } });
       await tx.inventoryHold.updateMany({ where: { departureId: d.id, status: 'active' }, data: { status: 'released' } });
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h: any) => h.id) }, status: 'reserved' }, data: { status: 'released' } });

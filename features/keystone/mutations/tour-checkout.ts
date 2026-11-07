@@ -10,6 +10,8 @@ import { promoteWaitlist, markWaitlistConverted, closeWaitlist } from './tour-wa
 import { allocateRefund, legKey, legWhere } from '../lib/tour-tender';
 import { findCardByCode, debitCard, returnToCard } from './tour-gift-cards';
 import { unusable, applyCard } from '../lib/tour-gift-card';
+import { assertMove } from '../lib/stateMachines';
+import { expireStaleHolds } from './tour-catalog';
 import { consumeManagerApproval, requestManagerApproval, approveManagerApproval } from '../utils/managerApproval';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded', 'refunded'];
@@ -26,6 +28,8 @@ export async function refreshDepartureStatus(tx: any, departureId: string) {
   if (!['scheduled', 'on_sale', 'min_not_met', 'confirmed', 'full'].includes(d.status)) return;
   const next = o.booked >= d.capacity ? 'full' : o.booked >= d.tour.minParticipants ? 'confirmed' : d.status === 'min_not_met' ? 'min_not_met' : 'on_sale';
   if (next !== d.status) await tx.departure.update({ where: { id: d.id }, data: { status: next } });
+  // The minimum is met again: the 'run or cancel' decision the sweep raised no longer needs anyone.
+  if (next === 'confirmed' || next === 'full') await tx.operationalTask.updateMany({ where: { taskKey: `min:${d.id}`, status: 'open' }, data: { status: 'resolved' } });
 }
 export function buildParticipants(quote: any, input: any[]) {
   const tickets = quote.lines.filter((l: any) => l.kind === 'ticket');
@@ -152,20 +156,37 @@ export async function startBookingCheckout(_r: any, args: any, context: any) {
 export async function finalizeBookingPayment(prisma: any, bookingId: string, actorId: string | null, requestId: string) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { paymentCollection: { include: { paymentSessions: { include: { paymentProvider: true } } } } } });
   if (!booking) throw new Error('Booking not found');
-  if (booking.status !== 'pending_payment') return booking;
   const session = booking.paymentCollection?.paymentSessions?.find((s: any) => s.isSelected);
   const giftCardId: string | null = session?.data?.giftCardId || null, giftCents: number = session?.data?.giftCents || 0;
   const cardCents = booking.totalCents - giftCents;
+  // A card payment can land after the hold lapsed and the lapse cancelled the booking. The money is real, so the booking is revived and
+  // decided like any late payment: confirmed if the seats are still free, otherwise cancelled with the payment refunded.
+  let revive = false;
+  if (booking.status !== 'pending_payment') {
+    if (booking.status === 'cancelled' && cardCents > 0 && booking.holdId && session?.data?.paymentIntentId) {
+      const lapsed = await prisma.inventoryHold.findUnique({ where: { id: booking.holdId }, select: { status: true } });
+      revive = lapsed?.status === 'expired' && !await prisma.payment.findUnique({ where: { idempotencyKey: `tour-payment:${booking.id}` }, select: { id: true } });
+    }
+    if (!revive) return booking;
+  }
   let observed: any = null;
   if (cardCents > 0) {
     if (!session?.data?.paymentIntentId) throw new Error('Payment has not started');
-    observed = await getPaymentStatus({ provider: session.paymentProvider, paymentId: session.data.paymentIntentId });
-    if (observed.status !== 'succeeded') throw new Error('Payment not completed');
+    try {
+      observed = await getPaymentStatus({ provider: session.paymentProvider, paymentId: session.data.paymentIntentId });
+      if (observed.status !== 'succeeded') throw new Error('Payment not completed');
+    } catch (e) { if (revive) return booking; throw e; }
     if (observed.amount !== cardCents || String(observed.currencyCode).toUpperCase() !== booking.currencyCode) throw new Error('Payment amount does not match the booking; operator reconciliation required');
   }
   let failure = '';
   const confirmed = await prisma.$transaction(async (tx: any) => {
     await lockTransactionKey(tx, `departure:${booking.departureId}`);
+    if (revive) {
+      assertMove('booking', 'cancelled', 'pending_payment');
+      const back = await tx.booking.updateMany({ where: { id: booking.id, status: 'cancelled' }, data: { status: 'pending_payment' } });
+      if (back.count !== 1) return booking;
+      await audit(tx, actorId, 'booking.revived_by_late_payment', 'Booking', booking.id, { status: 'cancelled' }, { status: 'pending_payment' }, 'Card payment arrived after the hold lapsed', requestId);
+    }
     // Lock order: departure, then gift card. The card is checked before seats are confirmed, so a balance spent elsewhere in the
     // meantime cancels this booking (and refunds the bank card part) instead of confirming it short.
     if (giftCardId) {
@@ -308,10 +329,16 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
       const refunded = (b.refundedCents || 0) + total;
       const data: any = { refundedCents: refunded };
       if (a.cancel) { data.status = refunded >= b.totalCents && b.totalCents > 0 ? 'refunded' : 'cancelled'; data.seats = 0; if (b.totalCents === 0) data.status = 'cancelled'; }
-      else if (refunded > 0) data.status = refunded >= b.totalCents ? 'refunded' : 'partially_refunded';
-      if (data.status === 'refunded' && !a.cancel) data.seats = b.seats;
+      // A partial refund is money only (refundedCents): the booking keeps its operational status, so its seats stay counted and the guest can still check in or cancel.
+      else if (refunded > 0 && refunded >= b.totalCents) data.status = 'refunded';
+      if (data.status && data.status !== b.status) assertMove('booking', b.status, data.status);
       await tx.booking.update({ where: { id: b.id }, data });
-      if (a.cancel) { await tx.promoRedemption.updateMany({ where: { bookingId: b.id, status: 'committed' }, data: { status: 'released' } }); await refreshDepartureStatus(tx, b.departureId); await promoteWaitlist(tx, b.departureId, a.actorId); }
+      // The guest is out (cancelled or fully refunded): the promo use is given back, and the seats go back on sale and to the waitlist.
+      if (data.status === 'cancelled' || data.status === 'refunded') {
+        const used = await tx.promoRedemption.findMany({ where: { bookingId: b.id, status: 'committed' }, select: { id: true, promoCodeId: true } });
+        for (const r of used) { await tx.promoRedemption.update({ where: { id: r.id }, data: { status: 'released' } }); await tx.promoCode.updateMany({ where: { id: r.promoCodeId, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } }); }
+        await refreshDepartureStatus(tx, b.departureId); await promoteWaitlist(tx, b.departureId, a.actorId);
+      }
       await audit(tx, a.actorId, a.cancel ? 'booking.cancelled' : 'booking.refunded', 'Booking', b.id, { status: b.status, refundedCents: b.refundedCents }, data, a.reason, a.key);
     }
     return summary(legs.length ? await tx.refund.findMany({ where: { id: { in: legs.map((l: any) => l.id) } }, orderBy: { createdAt: 'asc' } }) : []);
@@ -363,7 +390,9 @@ export async function cancelDepartureCore(prisma: any, actorId: string, i: any, 
     if (!d) throw new Error('Departure not found');
     if (['completed', 'in_progress'].includes(d.status)) throw new Error('Departure already ran');
     if (d.status !== status) {
+      assertMove('departure', d.status, status);
       await tx.departure.update({ where: { id: d.id }, data: { status } });
+      await tx.operationalTask.updateMany({ where: { taskKey: `min:${d.id}`, status: 'open' }, data: { status: 'resolved' } });
       await tx.inventoryHold.updateMany({ where: { departureId: d.id, status: 'active' }, data: { status: 'released' } });
       const holds = await tx.inventoryHold.findMany({ where: { departureId: d.id, status: 'released' }, select: { id: true } });
       await tx.promoRedemption.updateMany({ where: { holdId: { in: holds.map((h: any) => h.id) }, status: 'reserved' }, data: { status: 'released' } });
@@ -451,6 +480,10 @@ export async function signWaiver(_r: any, args: any, context: any) {
 export async function sweepDepartures(_r: any, args: any, context: any) {
   const user = await authorize(context, 'canManageDepartures');
   return command(context, args.idempotencyKey, 'sweepDepartures', {}, ['departure-sweep'], async tx => {
+    // Holds lapse by themselves: without this a quiet departure keeps its abandoned checkouts as pending_payment forever.
+    let lapsed = 0;
+    const stale = await tx.inventoryHold.findMany({ where: { status: 'active', expiresAt: { lte: new Date() } }, select: { departureId: true }, distinct: ['departureId'], take: 500 });
+    for (const id of stale.map((h: any) => h.departureId).sort()) { await lockTransactionKey(tx, `departure:${id}`); lapsed += await expireStaleHolds(tx, id); }
     const rows = await tx.departure.findMany({ where: { status: { in: ['on_sale', 'min_not_met', 'confirmed', 'full'] }, startAt: { gt: new Date(), lt: new Date(Date.now() + 86400000 + 3600000) } }, include: { tour: true }, take: 500 });
     let tasks = 0, closed = 0;
     for (const d of rows) {
@@ -460,7 +493,9 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
       if (decision.needsDecision) {
         await tx.departure.update({ where: { id: d.id }, data: { status: 'min_not_met' } });
         const key = `min:${d.id}`;
-        if (!await tx.operationalTask.findUnique({ where: { taskKey: key } })) { await tx.operationalTask.create({ data: { name: 'Run or cancel: minimum not met', departureId: d.id, taskKey: key, status: 'open' } }); tasks++; }
+        const had = await tx.operationalTask.findUnique({ where: { taskKey: key } });
+        if (had?.status === 'resolved') { await tx.operationalTask.updateMany({ where: { id: had.id, status: 'resolved' }, data: { status: 'open' } }); tasks++; }
+        if (!had) { await tx.operationalTask.create({ data: { name: 'Run or cancel: minimum not met', departureId: d.id, taskKey: key, status: 'open' } }); tasks++; }
       }
       if (d.startAt.getTime() - d.bookingCutoffMinutes * 60000 <= Date.now()) { await tx.departure.update({ where: { id: d.id }, data: { status: 'closed' } }); closed++; }
     }
@@ -469,8 +504,8 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
     const waitingOn = await tx.waitlistEntry.findMany({ where: { status: { in: ['waiting', 'offered'] }, departure: { startAt: { gt: new Date() } } }, select: { departureId: true }, distinct: ['departureId'], take: 200 });
     for (const { departureId } of waitingOn) { await lockTransactionKey(tx, `departure:${departureId}`); waitlistOffers += (await promoteWaitlist(tx, departureId, user.id)).offered; }
     const { reminders, suppressedReminders } = await queueDayBeforeReminders(tx, user.id);
-    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders, waitlistOffers });
-    return { tasks, closed, reminders, suppressedReminders, waitlistOffers };
+    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders, waitlistOffers, lapsedHolds: lapsed });
+    return { tasks, closed, reminders, suppressedReminders, waitlistOffers, lapsedHolds: lapsed };
   });
 }
 

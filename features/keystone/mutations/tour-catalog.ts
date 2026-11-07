@@ -6,6 +6,16 @@ import { lockTransactionKey } from '../lib/tour-command';
 export async function releaseHoldPromos(tx: any, holdIds: string[]) {
   if (holdIds.length) await tx.promoRedemption.updateMany({ where: { holdId: { in: holdIds }, status: 'reserved' }, data: { status: 'released' } });
 }
+// Active holds past their time free their seats and promo reservations and cancel the checkout that was waiting on them. Caller holds departure:<id>.
+export async function expireStaleHolds(tx: any, departureId: string) {
+  const stale = await tx.inventoryHold.findMany({ where: { departureId, status: 'active', expiresAt: { lte: new Date() } }, select: { id: true } });
+  if (!stale.length) return 0;
+  const ids = stale.map((h: any) => h.id);
+  await tx.inventoryHold.updateMany({ where: { id: { in: ids }, status: 'active' }, data: { status: 'expired' } });
+  await releaseHoldPromos(tx, ids);
+  await tx.booking.updateMany({ where: { holdId: { in: ids }, status: 'pending_payment' }, data: { status: 'cancelled' } });
+  return ids.length;
+}
 export async function toursOnSale(_root: any, _args: any, context: any) {
   return context.prisma.tour.findMany({ where: { status: 'active', departures: { some: { startAt: { gt: new Date() }, status: { in: ['on_sale','confirmed','min_not_met'] } } } }, select: { id: true, name: true, slug: true, description: true, durationMinutes: true, images: true, kind: true, minAge: true, highlights: true, whatToBring: true, meetingPoint: { select: { name: true, address: true, instructions: true } }, addOns: { select: { id: true, name: true, priceCents: true, perPerson: true } }, requiresWaiverId: true, cancellationPolicy: { select: { rules: true, weatherFullRefund: true } }, ticketTypes: { where: { active: true }, select: { id: true, name: true, priceCents: true, currencyCode: true } } }, take: 100 });
 }
@@ -14,7 +24,7 @@ export async function tourAvailability(_root: any, args: any, context: any) {
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from || to.getTime() - from.getTime() > 92 * 86400000) throw new Error('Choose a valid date range of at most 92 days');
   const rows = await context.prisma.departure.findMany({ where: { tourId: args.tourId, tour: { status: 'active' }, startAt: { gte: from, lte: to }, status: { in: ['on_sale','confirmed','min_not_met','full'] } }, select: { id: true, startAt: true, endAt: true, capacity: true, bookingCutoffMinutes: true }, take: 500, orderBy: { startAt: 'asc' } });
   const ids = rows.map((r: any) => r.id);
-  const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show'];
+  const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'];
   const [booked, held, channels, channelSold] = await Promise.all([
     context.prisma.booking.groupBy({ by: ['departureId'], where: { departureId: { in: ids }, status: { in: LIVE } }, _sum: { seats: true } }),
     context.prisma.inventoryHold.groupBy({ by: ['departureId'], where: { departureId: { in: ids }, status: 'active', expiresAt: { gt: new Date() } }, _sum: { quantity: true } }),
@@ -39,12 +49,7 @@ export async function createDepartureHold(_root: any, args: any, context: any) {
 }
 export async function placeHold(tx: any, input: any, actorId: string | null, requestId: string, channelId?: string, ttlMs = 600000) {
     // Expired holds free their seats and promo reservations under the same departure lock.
-    const stale = await tx.inventoryHold.findMany({ where: { departureId: input.departureId, status: 'active', expiresAt: { lte: new Date() } }, select: { id: true } });
-    if (stale.length) {
-      await tx.inventoryHold.updateMany({ where: { id: { in: stale.map((h: any) => h.id) } }, data: { status: 'expired' } });
-      await releaseHoldPromos(tx, stale.map((h: any) => h.id));
-      await tx.booking.updateMany({ where: { holdId: { in: stale.map((h: any) => h.id) }, status: 'pending_payment' }, data: { status: 'cancelled' } });
-    }
+    await expireStaleHolds(tx, input.departureId);
     const o = await departureOccupancy(tx, input.departureId, undefined, channelId);
     const d = o.departure;
     if (d.tour.status !== 'active' || !['on_sale','confirmed','min_not_met','full'].includes(d.status) || d.startAt.getTime() - d.bookingCutoffMinutes * 60000 <= Date.now()) throw new Error('Departure is not on sale');

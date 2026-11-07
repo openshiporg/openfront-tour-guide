@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { StatusLabel } from '../../components/StatusLabel'
 import { Input } from '@/components/ui/input'
-import { captureWaiverAction, checkInAction, getParticipantWaiver, noShowAction, syncOfflineAction } from '../actions/checkIn'
+import { captureWaiverAction, checkInAction, getParticipantWaiver, noShowAction, undoNoShowAction, syncOfflineAction } from '../actions/checkIn'
 
 type Tap = { key: string; kind: 'check_in' | 'no_show'; participantId?: string; bookingId?: string; recordedAt: string; label: string }
 type Problem = { key: string; label: string; reason: string }
@@ -127,6 +127,7 @@ export function ManifestClient({ manifest }: { manifest: any }) {
             ))}
           </ul>
           {b.status === 'confirmed' && (queuedOut.has(b.id) ? <StatusLabel status="no_show_saved_offline" className="mt-1" /> : <Button size="sm" variant="outline" className="mt-1" disabled={b.participants.some((p: any) => queuedIn.has(p.id))} onClick={() => run(() => noShowAction(b.id), { kind: 'no_show', bookingId: b.id, label: `No show · ${b.bookingRef}` })}>No show</Button>)}
+          {b.status === 'no_show' && <Button size="sm" variant="outline" className="mt-1" disabled={!online || queue.length > 0} onClick={async () => { setError(null); try { const r = await undoNoShowAction(b.id); if (!r.success) setError(r.error || 'Failed'); else router.refresh() } catch { setError('Could not undo the no show') } }}>Undo no show</Button>}
         </section>
       ))}
       {!manifest.bookings.length && <p className="text-sm text-muted-foreground">No bookings.</p>}

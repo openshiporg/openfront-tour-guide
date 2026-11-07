@@ -75,7 +75,8 @@ async function runCommand(context: any, operation: string, scopedKey: string, pa
     return result;
   }, { timeout: 20000 });
 }
-const COUNTED = "'confirmed','checked_in','completed','no_show'";
+// partially_refunded is a legacy status (a partial refund no longer changes it) but old rows still hold seats.
+const COUNTED = "'confirmed','checked_in','completed','no_show','partially_refunded'";
 // Seats taken, held and reserved for other channels, in ONE statement (it used to be 3 + one per channel).
 export async function occupancyNumbers(tx: any, departureId: string, startAt: Date, excludeHoldId?: string, channelId?: string) {
   const now = new Date();
