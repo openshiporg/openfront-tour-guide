@@ -5,12 +5,26 @@ import { cookies } from 'next/headers'
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient'
 
 // Guest proof: a random token kept in an httpOnly cookie. Only its SHA-256 digest is stored.
-const PROOF = 'tour_guest_proof'
+// Over HTTPS it is SameSite=None; Secure; Partitioned (CHIPS) so a framed shop
+// (the Oathkeeper Browser, an embed) keeps its seat hold through checkout:
+// Safari keeps a cookie in a cross-site frame only when it is partitioned. It
+// uses a new name because a browser keeps a partitioned and an unpartitioned
+// cookie of the same name side by side; the earlier Lax cookie is still read.
+const PROOF = 'tour_guest_proof_p'
+const LEGACY_PROOF = 'tour_guest_proof'
+const production = process.env.NODE_ENV === 'production'
 async function proof() {
   const jar = await cookies()
-  let token = jar.get(PROOF)?.value
-  if (!token) { token = randomUUID() + randomUUID().replaceAll('-', ''); jar.set(PROOF, token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7 }) }
-  return token
+  let token = jar.get(PROOF)?.value || jar.get(LEGACY_PROOF)?.value
+  if (!jar.get(PROOF)?.value) {
+    token ||= randomUUID() + randomUUID().replaceAll('-', '')
+    try {
+      jar.set(PROOF, token, { httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 7, ...(production ? { sameSite: 'none' as const, secure: true, partitioned: true } : { sameSite: 'lax' as const }) })
+    } catch {
+      // Server Components can't set cookies; the next Server Action will.
+    }
+  }
+  return token as string
 }
 async function call<T = any>(query: string, variables: Record<string, unknown>): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
   const r = await keystoneClient<T>(query, variables)
