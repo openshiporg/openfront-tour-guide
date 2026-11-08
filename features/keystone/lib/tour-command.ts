@@ -3,6 +3,7 @@ import { GraphQLError } from 'graphql';
 import { permissions, type Permission } from '../access';
 import { updateIdempotencyAttempt, assertIdempotencyRequest, canonicalIdempotencyParams, idempotencyFingerprint } from '../utils/idempotency';
 import { Prisma } from '@prisma/client';
+import { constraintRefusal } from './constraint-errors';
 export const opaqueToken = () => randomBytes(32).toString('base64url');
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
@@ -41,6 +42,8 @@ export async function command(context: any, key: string, operation: string, para
 // Domain refusals ("Guide is unavailable", "Valid Water Safety certification required") are written for the operator;
 // surface them with a user-facing code. Driver/Prisma failures keep the generic message.
 export function userFacingError(error: any) {
+  const refusal = constraintRefusal(error);
+  if (refusal) return new GraphQLError(refusal.message, { extensions: { code: refusal.code }, originalError: error });
   if (error instanceof GraphQLError || /^Prisma/.test(error?.name || '') || !(error instanceof Error)) return error;
   return new GraphQLError(error.message, { extensions: { code: 'KS_USER_INPUT_ERROR' }, originalError: error });
 }
