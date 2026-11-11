@@ -17,6 +17,21 @@ export function visibleSidebarLists<T extends SidebarList>(lists: T[], user: Sid
   return lists.filter((list) => !list.isHidden)
 }
 
+/** Platform pages whose data lives in a list with a different path; the page follows that list's visibility. */
+const PLATFORM_PAGE_LIST: Record<string, string> = {
+  today: 'departures',
+  calendar: 'departures',
+  weather: 'departures',
+  waitlist: 'waitlist-entries',
+  'check-in': 'participants',
+  waivers: 'waiver-templates',
+  reports: 'payments',
+  notifications: 'notification-preferences',
+  customers: 'bookings',
+  settings: 'store-settings',
+  store: 'store-settings',
+}
+
 /**
  * A platform page whose first segment is a list path follows that list's visibility;
  * pages that are not tied to one list stay visible to dashboard users.
@@ -30,6 +45,7 @@ export function visiblePlatformItems<T extends { href: string }>(
   const hiddenPaths = new Set(lists.filter((list) => list.isHidden).map((list) => list.path))
   return items.filter((item) => {
     const slug = item.href.split('/platform/')[1]?.split(/[/?#]/)[0]
-    return !slug || !hiddenPaths.has(slug)
+    if (!slug) return true
+    return !hiddenPaths.has(slug) && !hiddenPaths.has(PLATFORM_PAGE_LIST[slug] ?? slug)
   })
 }
