@@ -5773,6 +5773,7 @@ type Mutation {
   checkInParticipant(input: ParticipantActionInput!, idempotencyKey: String!): JSON
   syncOfflineCheckIns(input: SyncOfflineCheckInsInput!, idempotencyKey: String!): JSON
   markNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
+  undoNoShow(input: BookingActionInput!, idempotencyKey: String!): JSON
   resetGuestLink(input: ResetGuestLinkInput!, idempotencyKey: String!): JSON
   joinWaitlist(input: WaitlistJoinInput!, idempotencyKey: String!): JSON
   issueGiftCard(input: IssueGiftCardInput!, idempotencyKey: String!): JSON
@@ -5977,6 +5978,7 @@ type Query {
   tourTotal: Int
   operatorName: String
   checkoutHold(holdId: ID!, token: String!): JSON
+  bookingRefExists(bookingRef: String!): Boolean
   waiverForToken(token: String!): JSON
   departuresInRange(from: String!, to: String!): JSON
   departureManifest(departureId: ID!): JSON

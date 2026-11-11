@@ -72,6 +72,10 @@ export async function lookup(bookingRef: string, email: string) {
   const r = await call<{ lookupBooking: any }>(`query($r:String!,$e:String!){ lookupBooking(bookingRef:$r, email:$e) }`, { r: bookingRef, e: email })
   return r.ok ? { ok: true as const, booking: r.data.lookupBooking } : r
 }
+export async function bookingRefExists(bookingRef: string) {
+  const r = await call<{ bookingRefExists: boolean }>(`query($r:String!){ bookingRefExists(bookingRef:$r) }`, { r: bookingRef })
+  return r.ok ? r.data.bookingRefExists : true
+}
 export async function cancelBooking(bookingRef: string, email: string, key: string) {
   const r = await call<{ cancelMyBooking: any }>(`mutation($r:String!,$e:String!,$k:String!){ cancelMyBooking(bookingRef:$r, email:$e, idempotencyKey:$k) }`, { r: bookingRef, e: email, k: key })
   return r.ok ? { ok: true as const, booking: r.data.cancelMyBooking } : r

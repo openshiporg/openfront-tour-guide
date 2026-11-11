@@ -11,7 +11,7 @@ import { allocateRefund, legKey, legWhere } from '../lib/tour-tender';
 import { findCardByCode, debitCard, returnToCard } from './tour-gift-cards';
 import { unusable, applyCard } from '../lib/tour-gift-card';
 import { assertMove } from '../lib/stateMachines';
-import { expireStaleHolds } from './tour-catalog';
+import { expireStaleHolds, releaseHoldPromos } from './tour-catalog';
 import { consumeManagerApproval, requestManagerApproval, approveManagerApproval } from '../utils/managerApproval';
 
 const LIVE = ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded', 'refunded'];
@@ -346,14 +346,29 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
 }
 export async function cancelMyBooking(_r: any, args: any, context: any) {
   const booking = await context.prisma.booking.findUnique({ where: { bookingRef: String(args.bookingRef || '').trim().toUpperCase() }, include: { departure: true } });
-  if (!booking || norm(booking.guestEmail) !== norm(args.email)) throw new Error('Booking not found');
-  if (booking.status !== 'confirmed') throw new Error('Only confirmed bookings can be cancelled');
-  if (booking.departure.startAt <= new Date()) throw new Error('Departure has started');
-  if (booking.departure.startAt.getTime() - (booking.departure.bookingCutoffMinutes ?? 0) * 60000 <= Date.now()) throw new Error('Online cancellation closed before the start. Contact the operator.');
+  if (!booking || norm(booking.guestEmail) !== norm(args.email)) throw userFacingError(new Error('Booking not found'));
+  if (booking.status === 'pending_payment') {
+    // An unpaid checkout the guest walked away from: nothing was charged, so cancel it and free its seats and promo.
+    await context.prisma.$transaction(async (tx: any) => {
+      await lockTransactionKey(tx, `departure:${booking.departureId}`);
+      const gone = await tx.booking.updateMany({ where: { id: booking.id, status: 'pending_payment' }, data: { status: 'cancelled' } });
+      if (!gone.count || !booking.holdId) return;
+      await tx.inventoryHold.updateMany({ where: { id: booking.holdId, status: 'active' }, data: { status: 'released' } });
+      await releaseHoldPromos(tx, [booking.holdId]);
+    }, { timeout: 20000 });
+    return bookingView(context.prisma, await context.prisma.booking.findUnique({ where: { id: booking.id } }));
+  }
+  if (booking.status !== 'confirmed') throw userFacingError(new Error('Only confirmed bookings can be cancelled'));
+  if (booking.departure.startAt <= new Date()) throw userFacingError(new Error('Departure has started'));
+  if (booking.departure.startAt.getTime() - (booking.departure.bookingCutoffMinutes ?? 0) * 60000 <= Date.now()) throw userFacingError(new Error('Online cancellation closed before the start. Contact the operator.'));
   const refundable = booking.totalCents - booking.refundedCents;
   const amount = refundPolicyAmount(refundable, booking.policySnapshot?.rules || [], (booking.departure.startAt.getTime() - Date.now()) / 3600000);
   await issueRefund(context.prisma, { bookingId: booking.id, amount, reason: 'Guest cancellation per policy', key: `cancel:${booking.id}:${args.idempotencyKey}`, actorId: null, cancel: true });
   return bookingView(context.prisma, booking);
+}
+// Whether a booking reference exists at all (no guest details), so an unknown /bookings/<ref> can be a real 404.
+export async function bookingRefExists(_r: any, args: any, context: any) {
+  return !!await context.prisma.booking.findUnique({ where: { bookingRef: String(args.bookingRef || '').trim().toUpperCase() }, select: { id: true } });
 }
 export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); const booking = await context.prisma.booking.findUnique({ where: { id: args.bookingId } }); if (!booking || !LIVE.includes(booking.status)) throw userFacingError(new Error('Booking cannot be refunded')); if (!Number.isSafeInteger(args.amount) || args.amount < 1 || args.amount > booking.totalCents - booking.refundedCents) throw userFacingError(new Error('Amount must be between 1 cent and the unrefunded balance')); const reason = String(args.reason || '').trim(); const open = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: args.amount, reason, requestedById: context.session.itemId, status: { in: ['pending', 'approved'] }, expiresAt: { gt: new Date() } } }); if (open) return open; return requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); }
 export async function approveRefund(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); try { return await approveManagerApproval(root, { approvalId: args.approvalId }, context); } catch (e) { throw userFacingError(e); } }

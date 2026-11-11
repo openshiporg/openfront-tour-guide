@@ -3,7 +3,7 @@ import type { GraphQLSchema } from 'graphql';
 import redirectToInit from "./redirectToInit";
 import { storeLogoTypeDefs, storeLogo } from "./storeLogo";
 import { toursOnSale, tourAvailability, createDepartureHold, waiverForToken } from './tour-catalog';
-import { startBookingCheckout, completeBookingCheckout, lookupBooking, cancelMyBooking, refundBooking, cancelDeparture, rebookWithCredit, createChannelBooking, operatorBookingByKey, signWaiver, sweepDepartures, checkoutHold, requestRefundApproval, approveRefund } from './tour-checkout';
+import { startBookingCheckout, completeBookingCheckout, lookupBooking, bookingRefExists, cancelMyBooking, refundBooking, cancelDeparture, rebookWithCredit, createChannelBooking, operatorBookingByKey, signWaiver, sweepDepartures, checkoutHold, requestRefundApproval, approveRefund } from './tour-checkout';
 import { generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, closeDeparture, generateChannelStatement } from './tour-operations';
 
 import { ensureTourOnboardingRecord, seedTourActivity } from './tour-onboarding';
@@ -72,6 +72,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         tourTotal: Int
         operatorName: String
         checkoutHold(holdId: ID!, token: String!): JSON
+        bookingRefExists(bookingRef: String!): Boolean
         waiverForToken(token: String!): JSON
         departuresInRange(from: String!, to: String!): JSON
         departureManifest(departureId: ID!): JSON
@@ -149,7 +150,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     ` + storeLogoTypeDefs,
     resolvers: {
-      Query: { storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, bookingRefExists, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, resetGuestLink, moveBooking,
