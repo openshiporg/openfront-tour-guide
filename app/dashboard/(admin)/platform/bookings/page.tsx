@@ -1,3 +1,4 @@
+import { gatePlatformPage } from '@/features/dashboard/lib/platformGate'
 import { BookingsPage } from '@/features/platform/bookings/screens/BookingsPage'
 
-export default BookingsPage
+export default gatePlatformPage('bookings', BookingsPage)

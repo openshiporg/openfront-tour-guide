@@ -18,7 +18,7 @@ export function visibleSidebarLists<T extends SidebarList>(lists: T[], user: Sid
 }
 
 /** Platform pages whose data lives in a list with a different path; the page follows that list's visibility. */
-const PLATFORM_PAGE_LIST: Record<string, string> = {
+export const PLATFORM_PAGE_LIST: Record<string, string> = {
   today: 'departures',
   calendar: 'departures',
   weather: 'departures',
