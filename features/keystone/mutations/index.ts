@@ -19,6 +19,7 @@ import { joinWaitlist, addToWaitlist, waitlistStatus, claimWaitlistOffer, leaveW
 import { departuresInRange, departureManifest } from './tour-manifest';
 import updateActiveUser from './updateActiveUser';
 import { transitionGuidePayout, transitionChannelStatement } from './tour-settlement';
+import { pricingRuleBoard, savePricingRule, removePricingRule } from './tour-pricing-rules';
 
 const graphql = String.raw;
 
@@ -67,6 +68,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       input CloseDepartureInput { departureId: ID! }
       input ChannelStatementInput { channelId: ID!, from: String!, to: String! }
       input SettlementTransitionInput { id: ID!, status: String!, reference: String }
+      input PricingRuleInput { id: ID, tourId: ID!, ticketTypeId: ID, name: String!, from: String, to: String, weekdays: [Int!], adjustBps: Int, overridePriceCents: Int }
+      input PricingRuleRemoveInput { id: ID! }
       type Query {
         redirectToInit: Boolean
         tourTotal: Int
@@ -96,6 +99,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         bookingParty(bookingId: ID!): JSON
         bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
         guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
+        pricingRuleBoard: JSON
       }
       type Mutation {
         createDepartureHold(input: DepartureHoldInput!, idempotencyKey: String!): JSON
@@ -143,6 +147,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
         transitionGuidePayout(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
         transitionChannelStatement(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
+        savePricingRule(input: PricingRuleInput!, idempotencyKey: String!): JSON
+        removePricingRule(input: PricingRuleRemoveInput!, idempotencyKey: String!): JSON
         sweepDepartures(idempotencyKey: String!): JSON
         ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
         seedTourActivity(template: String!, seed: JSON!): JSON
@@ -150,11 +156,11 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     ` + storeLogoTypeDefs,
     resolvers: {
-      Query: { storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, bookingRefExists, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { pricingRuleBoard, storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, bookingRefExists, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, resetGuestLink, moveBooking,
-        transitionGuidePayout, transitionChannelStatement,
+        transitionGuidePayout, transitionChannelStatement, savePricingRule, removePricingRule,
         changeParty, completePartyChange, changeBookingParty,
         issueGiftCard, voidGiftCard, revealGiftCardCode,
         joinWaitlist, addToWaitlist, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer,

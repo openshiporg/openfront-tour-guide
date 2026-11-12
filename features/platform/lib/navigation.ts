@@ -1,4 +1,4 @@
-import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, CreditCard, UserRound, Settings, LucideIcon, Store } from 'lucide-react'
+import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, TrendingUp, CreditCard, UserRound, Settings, LucideIcon, Store } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -17,6 +17,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'My departures', href: '/platform/my-departures', description: 'Your accepted departures, manifests and pickup sheets.', icon: CalendarCheck, group: 'operations' },
   { title: 'Check-in', href: '/platform/check-in', description: 'Mobile manifest and check-in.', icon: ClipboardCheck, group: 'standalone' },
   { title: 'Tours', href: '/platform/tours', description: 'Tours, ticket types, add-ons, schedules and policies.', icon: Compass, group: 'catalog' },
+  { title: 'Seasonal pricing', href: '/platform/pricing', description: 'Price changes by season, weekday and ticket type.', icon: TrendingUp, group: 'catalog' },
   { title: 'Waivers', href: '/platform/waivers', description: 'Waiver versions and signatures.', icon: FileSignature, group: 'catalog' },
   { title: 'Gift cards', href: '/platform/gift-cards', description: 'Sell gift cards and vouchers; balances and history.', icon: Gift, group: 'catalog' },
   { title: 'Promo codes', href: '/platform/promo-codes', description: 'Discount codes and redemptions.', icon: Tag, group: 'catalog' },

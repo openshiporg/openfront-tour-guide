@@ -25,6 +25,7 @@ export const PLATFORM_PAGE_LIST: Record<string, string> = {
   waitlist: 'waitlist-entries',
   'check-in': 'participants',
   waivers: 'waiver-templates',
+  pricing: 'pricing-rules',
   reports: 'payments',
   notifications: 'notification-preferences',
   customers: 'bookings',

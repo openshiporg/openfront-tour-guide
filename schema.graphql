@@ -5801,6 +5801,8 @@ type Mutation {
   generateChannelStatement(input: ChannelStatementInput!, idempotencyKey: String!): JSON
   transitionGuidePayout(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
   transitionChannelStatement(input: SettlementTransitionInput!, idempotencyKey: String!): JSON
+  savePricingRule(input: PricingRuleInput!, idempotencyKey: String!): JSON
+  removePricingRule(input: PricingRuleRemoveInput!, idempotencyKey: String!): JSON
   sweepDepartures(idempotencyKey: String!): JSON
   ensureTourOnboardingRecord(entity: String!, data: JSON!): JSON
   seedTourActivity(template: String!, seed: JSON!): JSON
@@ -6002,6 +6004,7 @@ type Query {
   bookingParty(bookingId: ID!): JSON
   bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
   guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
+  pricingRuleBoard: JSON
   storeLogo: StoreLogo!
 }
 
@@ -6377,6 +6380,22 @@ input SettlementTransitionInput {
   id: ID!
   status: String!
   reference: String
+}
+
+input PricingRuleInput {
+  id: ID
+  tourId: ID!
+  ticketTypeId: ID
+  name: String!
+  from: String
+  to: String
+  weekdays: [Int!]
+  adjustBps: Int
+  overridePriceCents: Int
+}
+
+input PricingRuleRemoveInput {
+  id: ID!
 }
 
 type StoreLogo {
