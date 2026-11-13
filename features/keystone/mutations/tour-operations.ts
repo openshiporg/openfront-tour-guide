@@ -156,7 +156,9 @@ export async function closeDeparture(_r: any, args: any, context: any) {
   await authorize(context, 'canManageDepartures'); const i = args.input;
   return command(context, args.idempotencyKey, 'closeDeparture', i, [`departure:${i.departureId}`], async tx => {
     const d = await tx.departure.findUnique({ where: { id: i.departureId }, include: { assignedGuides: true } });
-    if (!d || !['closed','in_progress'].includes(d.status) || d.endAt > new Date()) throw new Error('Only an ended closed/in-progress departure can complete');
+    if (!d || !['on_sale','confirmed','full','closed','in_progress'].includes(d.status) || d.endAt > new Date()) throw new Error('Only an ended departure can be completed');
+    // The daily sweep closes a departure at its booking cutoff; if it ended before a sweep saw it, close it here first.
+    if (!['closed','in_progress'].includes(d.status)) { assertMove('departure', d.status, 'closed'); await tx.departure.update({ where: { id: d.id }, data: { status: 'closed' } }); d.status = 'closed'; }
     assertMove('departure', d.status, 'completed');
     await tx.departure.update({ where: { id: d.id }, data: { status: 'completed' } });
     // Nobody checked in and nobody marked a no show: the tour has run, so those bookings are no shows (not left 'confirmed' on a finished departure).
