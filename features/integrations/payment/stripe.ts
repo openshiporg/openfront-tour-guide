@@ -66,7 +66,9 @@ export async function refundPaymentFunction({ paymentId, amount, idempotencyKey,
 export async function getPaymentStatusFunction({ paymentId }: { paymentId: string }) {
   const stripe = getStripeClient();
 
-  const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentId, { expand: ['latest_charge'] });
+  const charge: any = paymentIntent.latest_charge && typeof paymentIntent.latest_charge === 'object' ? paymentIntent.latest_charge : null;
+  const card = charge?.payment_method_details?.card;
   const refunds: Stripe.Refund[] = [];
   let refundsComplete = true;
   for await (const refund of stripe.refunds.list({ payment_intent: paymentId, limit: 100 })) {
@@ -79,7 +81,8 @@ export async function getPaymentStatusFunction({ paymentId }: { paymentId: strin
     amount: paymentIntent.status === "succeeded" ? paymentIntent.amount_received : paymentIntent.amount,
     currencyCode: paymentIntent.currency.toUpperCase(),
     refunds, refundsComplete,
-    data: paymentIntent,
+    cardBrand: card?.brand || '', cardLast4: card?.last4 || '',
+    data: { ...paymentIntent, latest_charge: charge?.id || paymentIntent.latest_charge },
   };
 }
 

@@ -51,26 +51,26 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">Date</h2>
         <Popover>
-          <PopoverTrigger asChild><Button variant="outline">{day ? day.toDateString() : 'Choose a date'}</Button></PopoverTrigger>
-          <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={day} onSelect={(d) => { setDay(d); setDepartureId('') }} disabled={(d) => !days.has(new Intl.DateTimeFormat('en-CA').format(d))} /></PopoverContent>
+          <PopoverTrigger asChild><Button variant="outline" className="h-11">{day ? day.toDateString() : 'Choose a date'}</Button></PopoverTrigger>
+          <PopoverContent className="w-auto p-0"><Calendar classNames={{ day: 'size-11', day_button: 'size-11', weekday: 'size-11', button_previous: 'size-11', button_next: 'size-11', month_caption: 'h-11 mx-11' }} mode="single" selected={day} onSelect={(d) => { setDay(d); setDepartureId('') }} disabled={(d) => !days.has(new Intl.DateTimeFormat('en-CA').format(d))} /></PopoverContent>
         </Popover>
         <div className="flex flex-wrap gap-2">
-          {slots.map((d) => <Button key={d.id} variant={departureId === d.id ? 'default' : 'outline'} onClick={() => { setDepartureId(d.id); setJoined(null) }}>{when(d.startAt).split(', ').pop()} · {d.remaining > 0 ? `${d.remaining} left` : 'full, waitlist'}</Button>)}
+          {slots.map((d) => <Button key={d.id} className="h-11" variant={departureId === d.id ? 'default' : 'outline'} onClick={() => { setDepartureId(d.id); setJoined(null) }}>{when(d.startAt).split(', ').pop()} · {d.remaining > 0 ? `${d.remaining} left` : 'full, waitlist'}</Button>)}
         </div>
       </section>
       {selected && (
         <section className="space-y-3">
           <h2 className="text-base font-semibold">Tickets</h2>
           {tour.ticketTypes.map((t: any) => (
-            <div key={t.id} className="flex items-center justify-between gap-2"><span className="text-sm">{t.name} · {money(t.priceCents)}</span><span className="flex items-center gap-2"><Button size="sm" variant="outline" aria-label={`Fewer ${t.name}`} onClick={() => step(setQty, t.id, -1)}>−</Button><span className="w-6 text-center font-mono">{qty[t.id] || 0}</span><Button size="sm" variant="outline" aria-label={`More ${t.name}`} onClick={() => step(setQty, t.id, 1)}>+</Button></span></div>
+            <div key={t.id} className="flex items-center justify-between gap-2"><span className="text-sm">{t.name} · {money(t.priceCents)}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${t.name}`} onClick={() => step(setQty, t.id, -1)}>−</Button><span className="w-6 text-center font-mono">{qty[t.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${t.name}`} onClick={() => step(setQty, t.id, 1)}>+</Button></span></div>
           ))}
           {tour.addOns.length > 0 && <h2 className="pt-2 text-base font-semibold">Add-ons</h2>}
           {tour.addOns.map((a: any) => (
-            <div key={a.id} className="flex items-center justify-between gap-2"><span className="text-sm">{a.name} · {money(a.priceCents)}</span><span className="flex items-center gap-2"><Button size="sm" variant="outline" aria-label={`Fewer ${a.name}`} onClick={() => step(setAddOns, a.id, -1)}>−</Button><span className="w-6 text-center font-mono">{addOns[a.id] || 0}</span><Button size="sm" variant="outline" aria-label={`More ${a.name}`} onClick={() => step(setAddOns, a.id, 1)}>+</Button></span></div>
+            <div key={a.id} className="flex items-center justify-between gap-2"><span className="text-sm">{a.name} · {money(a.priceCents)}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${a.name}`} onClick={() => step(setAddOns, a.id, -1)}>−</Button><span className="w-6 text-center font-mono">{addOns[a.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${a.name}`} onClick={() => step(setAddOns, a.id, 1)}>+</Button></span></div>
           ))}
           {!waitlist && <Input placeholder="Promo code" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} />}
           {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-          {!waitlist && <Button className="w-full" disabled={busy || !chosen.length} onClick={reserve}>Hold seats · {money(total)}</Button>}
+          {!waitlist && <Button className="h-11 w-full" disabled={busy || !chosen.length} onClick={reserve}>Hold seats · {money(total)}</Button>}
           {waitlist && !joined && (
             <div className="space-y-2 border-t pt-3" aria-label="Waitlist">
               <h2 className="text-base font-semibold">Join the waitlist</h2>
@@ -78,7 +78,7 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
               <Input aria-label="Your name" placeholder="Your name" value={lead.name} onChange={(e) => setLead({ ...lead, name: e.target.value })} />
               <Input aria-label="Email" type="email" placeholder="Email" value={lead.email} onChange={(e) => setLead({ ...lead, email: e.target.value })} />
               <Input aria-label="Phone" placeholder="Phone (optional)" value={lead.phone} onChange={(e) => setLead({ ...lead, phone: e.target.value })} />
-              <Button className="w-full" disabled={busy || !lead.name.trim() || !lead.email.includes('@')} onClick={join}>{busy ? 'Joining…' : `Join the waitlist for ${party}`}</Button>
+              <Button className="h-11 w-full" disabled={busy || !lead.name.trim() || !lead.email.includes('@')} onClick={join}>{busy ? 'Joining…' : `Join the waitlist for ${party}`}</Button>
             </div>
           )}
           {joined && (

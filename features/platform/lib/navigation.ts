@@ -1,4 +1,4 @@
-import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, Bell, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, TrendingUp, CreditCard, UserRound, Settings, LucideIcon, Store } from 'lucide-react'
+import { Gift, ListOrdered, CalendarClock, CalendarDays, Ticket, Compass, Users, Truck, Handshake, ClipboardCheck, BarChart3, CalendarCheck, CloudRain, FileSignature, Tag, TrendingUp, UserRound, Settings, LucideIcon, Store } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -26,9 +26,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Channels', href: '/platform/channels', description: 'Resellers, allocations and statements.', icon: Handshake, group: 'operations' },
   { title: 'Weather', href: '/platform/weather', description: 'Weather cancellations: rebook or refund each guest.', icon: CloudRain, group: 'operations' },
   { title: 'Sales report', href: '/platform/reports', description: 'Sales by tour, channel and source, with CSV export.', icon: BarChart3, group: 'operations' },
-  { title: 'Notifications', href: '/platform/notifications', description: 'Queued and held-back guest messages.', icon: Bell, group: 'operations' },
   { title: 'Customers', href: '/platform/customers', description: 'Guests and their bookings.', icon: UserRound, group: 'operations' },
-  { title: 'Payment providers', href: '/platform/payment-providers', description: 'Payment gateways and settings.', icon: CreditCard, group: 'settings' },
   { title: 'Settings', href: '/platform/settings', description: 'Operator, tax and refund approval threshold.', icon: Settings, group: 'settings' },
   { title: 'Store', href: '/platform/store', description: 'Configure store settings, logo, and branding.', icon: Store, group: 'settings' },
 ]

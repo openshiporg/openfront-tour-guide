@@ -18,7 +18,7 @@ function PayDifference({ onPaid, onError }: { onPaid: () => Promise<void>; onErr
     if (r.error) { setBusy(false); return onError(r.error.message || 'Payment failed') }
     await onPaid(); setBusy(false)
   }
-  return <div className="space-y-3"><PaymentElement /><Button className="w-full" disabled={busy || !stripe} onClick={pay}>{busy ? 'Paying…' : 'Pay the difference'}</Button></div>
+  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>{busy ? 'Paying…' : 'Pay the difference'}</Button></div>
 }
 
 // Manage-link section: add or remove people. Costs more: pay the difference by card, the change applies once paid. Costs less: the
@@ -70,7 +70,7 @@ export function ChangeParty({ link, booking, onDone }: { link: { bookingRef: str
       <PartyEditor people={booking.participants} tickets={booking.tickets || []} money={money} onChange={setDraft} />
       {q && <PartyQuoteSummary q={q} money={money} />}
       {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-      <Button onClick={submit} disabled={!q || !q.roomForAdded || busy}>{busy ? 'Saving…' : q?.collectCents > 0 ? `Continue to pay ${money(q.collectCents)}` : q?.refundCents > 0 ? `Change and refund ${money(q.refundCents)}` : 'Save change'}</Button>
+      <Button className="h-11" onClick={submit} disabled={!q || !q.roomForAdded || busy}>{busy ? 'Saving…' : q?.collectCents > 0 ? `Continue to pay ${money(q.collectCents)}` : q?.refundCents > 0 ? `Change and refund ${money(q.refundCents)}` : 'Save change'}</Button>
     </section>
   )
 }

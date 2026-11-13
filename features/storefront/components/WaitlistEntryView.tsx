@@ -51,15 +51,15 @@ export function WaitlistEntryView() {
       {e.status === 'offered' && (
         <section className="space-y-2 border-t pt-3" aria-label="Offer">
           <p className="text-sm">{e.seats} seat{e.seats === 1 ? ' is' : 's are'} held for you until <span className="font-semibold">{when(e.offerExpiresAt, e.timezone)}</span>. After that they go to the next guest.</p>
-          <Button className="w-full" onClick={book} disabled={busy}>{busy ? 'Opening checkout…' : 'Book these seats'}</Button>
+          <Button className="h-11 w-full" onClick={book} disabled={busy}>{busy ? 'Opening checkout…' : 'Book these seats'}</Button>
         </section>
       )}
       {e.status === 'converted' && <p className="text-sm">Booked as <Link className="font-mono underline" href={`/bookings/${e.bookingRef}`}>{e.bookingRef}</Link>.</p>}
       {e.status === 'expired' && <p className="text-sm">{e.note || 'This waitlist entry is closed.'} <Link className="underline" href={`/tours/${e.tourSlug}`}>See other times</Link>.</p>}
       {open && (
         <section className="space-y-2 border-t pt-3" aria-label="Leave">
-          {!confirmLeave ? <Button variant="outline" onClick={() => setConfirmLeave(true)}>Leave the waitlist</Button> : (
-            <div className="flex flex-wrap gap-2"><Button variant="destructive" onClick={leave} disabled={busy}>Yes, leave{e.status === 'offered' ? ' and release the seats' : ''}</Button><Button variant="outline" onClick={() => setConfirmLeave(false)} disabled={busy}>Stay on it</Button></div>
+          {!confirmLeave ? <Button className="h-11" variant="outline" onClick={() => setConfirmLeave(true)}>Leave the waitlist</Button> : (
+            <div className="flex flex-wrap gap-2"><Button className="h-11" variant="destructive" onClick={leave} disabled={busy}>Yes, leave{e.status === 'offered' ? ' and release the seats' : ''}</Button><Button className="h-11" variant="outline" onClick={() => setConfirmLeave(false)} disabled={busy}>Stay on it</Button></div>
           )}
         </section>
       )}

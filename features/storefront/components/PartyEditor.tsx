@@ -40,10 +40,10 @@ export function PartyEditor({ people, tickets, money, onChange }: { people: Part
             <Input placeholder="Full name" value={a.fullName} onChange={(e) => set(i, { fullName: e.target.value })} />
             <Input inputMode="numeric" placeholder="Age" value={a.age} onChange={(e) => set(i, { age: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
           </div>
-          <button type="button" className="text-sm underline" onClick={() => setAdd((x) => x.filter((_, j) => j !== i))}>Remove this person</button>
+          <button type="button" className="h-11 text-sm underline" onClick={() => setAdd((x) => x.filter((_, j) => j !== i))}>Remove this person</button>
         </div>
       ))}
-      {tickets.length > 0 && <Button type="button" variant="outline" size="sm" onClick={() => setAdd((x) => [...x, { ticketTypeId: tickets[0].id, fullName: '', age: '' }])}>Add a person</Button>}
+      {tickets.length > 0 && <Button className="h-11" type="button" variant="outline" onClick={() => setAdd((x) => [...x, { ticketTypeId: tickets[0].id, fullName: '', age: '' }])}>Add a person</Button>}
     </div>
   )
 }

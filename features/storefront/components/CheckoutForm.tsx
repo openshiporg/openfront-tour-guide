@@ -23,7 +23,7 @@ function Pay({ bookingRef, email, onError }: { bookingRef: string; email: string
     if (!done.ok) return onError(done.error)
     router.push(`/bookings/${bookingRef}`)
   }
-  return <div className="space-y-3"><PaymentElement /><Button className="w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
+  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
 }
 
 export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string; hold: any; publishableKey: string }) {
@@ -81,15 +81,15 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
             <div key={i} className="grid grid-cols-[1fr_5rem] gap-2"><Input placeholder={`${p.label} ${i + 1} name`} value={names[i]} onChange={(e) => setNames(names.map((n, j) => (j === i ? e.target.value : n)))} /><Input inputMode="numeric" placeholder="Age" value={ages[i]} onChange={(e) => setAges(ages.map((n, j) => (j === i ? e.target.value : n)))} /></div>
           ))}
           <div className="space-y-2 border-t pt-3">
-            {!giftOpen && !gift ? <button type="button" className="text-sm underline underline-offset-4" onClick={() => setGiftOpen(true)}>Have a gift card?</button> : gift ? (
+            {!giftOpen && !gift ? <button type="button" className="flex h-11 items-center text-sm underline underline-offset-4" onClick={() => setGiftOpen(true)}>Have a gift card?</button> : gift ? (
               <p className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>Gift card ····{gift.last4} pays {money(giftCents, quote.currencyCode)}{gift.balanceCents > giftCents ? `, ${money(gift.balanceCents - giftCents, quote.currencyCode)} stays on the card` : ''}</span><button type="button" className="underline underline-offset-4" onClick={() => { setGift(null); setGiftCode('') }}>Remove</button></p>
             ) : (
-              <div className="flex gap-2"><Input aria-label="Gift card code" placeholder="GC-XXXX-XXXX-XXXX" autoCapitalize="characters" value={giftCode} onChange={(e) => setGiftCode(e.target.value)} /><Button type="button" variant="outline" disabled={giftCode.replace(/[^A-Za-z0-9]/g, '').length < 12} onClick={applyGift}>Apply</Button></div>
+              <div className="flex gap-2"><Input aria-label="Gift card code" placeholder="GC-XXXX-XXXX-XXXX" autoCapitalize="characters" value={giftCode} onChange={(e) => setGiftCode(e.target.value)} /><Button className="h-11" type="button" variant="outline" disabled={giftCode.replace(/[^A-Za-z0-9]/g, '').length < 12} onClick={applyGift}>Apply</Button></div>
             )}
             {giftError && <p className="text-sm text-rose-600">{giftError}</p>}
           </div>
           {error && <p className="text-sm text-rose-600">{error}</p>}
-          <Button className="w-full" disabled={left === 0 || !lead.name || !lead.email} onClick={begin}>{giftCents >= quote.totalCents && quote.totalCents > 0 ? 'Book with gift card' : 'Continue to payment'}</Button>
+          <Button className="h-11 w-full" disabled={left === 0 || !lead.name || !lead.email} onClick={begin}>{giftCents >= quote.totalCents && quote.totalCents > 0 ? 'Book with gift card' : 'Continue to payment'}</Button>
         </div>
       ) : stripePromise ? (
         <Elements stripe={stripePromise} options={{ clientSecret: checkout.clientSecret }}><Pay bookingRef={checkout.bookingRef} email={lead.email} onError={setError} />{error && <p className="mt-2 text-sm text-rose-600">{error}</p>}</Elements>

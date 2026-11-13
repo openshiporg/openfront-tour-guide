@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { command, audit, authorize, hashToken, assertProof, humanCode, derivedToken, manageToken, lockTransactionKey, departureOccupancy, occupancyNumbers, userFacingError } from '../lib/tour-command';
-import { notificationAfter, notificationRequestId, REMINDER_WINDOW_MS, type NotificationKind } from '../lib/tour-notifications';
 import { fastOperatorBooking } from './tour-operator-booking';
 import { placeHold } from './tour-catalog';
 import { createPayment, getPaymentStatus, refundPayment } from '../utils/paymentProviderAdapter';
@@ -66,26 +65,6 @@ export async function newBooking(tx: any, a: { quote: any; lead: any; participan
 }
 // Converts a held reservation into confirmed seats. Caller holds departure:<id> lock.
 
-// Queue (or record the suppression of) one guest notification, once per booking and kind. No transport is called.
-export async function queueGuestNotification(tx: any, kind: NotificationKind, booking: any, trip: any, actorId: string | null) {
-  const targetId = `${kind}:${booking.id}`;
-  if (await tx.auditEvent.findFirst({ where: { targetList: 'Notification', targetId }, select: { id: true } })) return null;
-  const email = String(booking.guestEmail || '').trim().toLowerCase();
-  const pref = email ? await tx.notificationPreference.findUnique({ where: { email } }) : null;
-  const n = notificationAfter(kind, booking, trip, pref);
-  await audit(tx, actorId, n.action, 'Notification', targetId, null, n.after, n.reason, notificationRequestId(kind, booking.id));
-  return n.action;
-}
-// Day-before reminders: confirmed bookings on departures starting inside the window, once each. departureIds narrows it (tests).
-export async function queueDayBeforeReminders(tx: any, actorId: string | null, departureIds?: string[]) {
-  let reminders = 0, suppressedReminders = 0;
-  const soon = await tx.departure.findMany({ where: { ...(departureIds ? { id: { in: departureIds } } : {}), status: { in: ['on_sale', 'min_not_met', 'confirmed', 'full'] }, startAt: { gt: new Date(), lt: new Date(Date.now() + REMINDER_WINDOW_MS) } }, include: { tour: true, bookings: { where: { status: 'confirmed' } } } });
-  for (const d of soon) for (const b of d.bookings) {
-    const r = await queueGuestNotification(tx, 'day_before_reminder', b, { tourName: d.tour.name, startAt: d.startAt, timezone: d.tour.timezone, meetingPoint: b.tourSnapshot?.meetingPoint }, actorId);
-    if (r === 'notification.queued') reminders++; else if (r) suppressedReminders++;
-  }
-  return { reminders, suppressedReminders };
-}
 export async function confirmBooking(tx: any, bookingId: string, actorId: string | null, requestId: string) {
   const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { hold: true } });
   if (booking.status === 'confirmed') return booking;
@@ -104,8 +83,6 @@ export async function confirmBooking(tx: any, bookingId: string, actorId: string
   await markWaitlistConverted(tx, hold.id, booking.bookingRef);
   await refreshDepartureStatus(tx, booking.departureId);
   await audit(tx, actorId, 'booking.confirmed', 'Booking', booking.id, { status: booking.status }, { status: 'confirmed', seats }, '', requestId);
-  const snap = booking.tourSnapshot || {};
-  await queueGuestNotification(tx, 'booking_confirmation', booking, { tourName: snap.name || 'your tour', startAt: snap.startAt, timezone: snap.timezone, meetingPoint: snap.meetingPoint }, actorId);
   return tx.booking.findUnique({ where: { id: booking.id } });
 }
 async function waiverLinks(prisma: any, bookingId: string) {
@@ -205,7 +182,7 @@ export async function finalizeBookingPayment(prisma: any, bookingId: string, act
     // back on the gift card first and reaches the bank card only for what the gift card did not cover (no cash-out of gift value).
     const paidAt = new Date();
     if (cardCents > 0) {
-      await tx.payment.create({ data: { createdAt: paidAt, idempotencyKey: `tour-payment:${booking.id}`, amount: cardCents, currencyCode: booking.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', paymentProviderId: session.paymentProviderId, providerPaymentId: session.data.paymentIntentId, orderId: booking.id, paymentCollectionId: booking.paymentCollectionId, processedAt: new Date(), isSplitPayment: giftCents > 0, data: { paymentIntentId: session.data.paymentIntentId } } });
+      await tx.payment.create({ data: { createdAt: paidAt, idempotencyKey: `tour-payment:${booking.id}`, amount: cardCents, currencyCode: booking.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', cardBrand: observed?.cardBrand || '', cardLast4: observed?.cardLast4 || '', paymentProviderId: session.paymentProviderId, providerPaymentId: session.data.paymentIntentId, orderId: booking.id, paymentCollectionId: booking.paymentCollectionId, processedAt: new Date(), isSplitPayment: giftCents > 0, data: { paymentIntentId: session.data.paymentIntentId } } });
       await tx.paymentCollection.update({ where: { id: booking.paymentCollectionId }, data: { authorizedAmount: result ? booking.totalCents : cardCents } });
       await tx.paymentSession.update({ where: { id: session.id }, data: { paymentAuthorizedAt: new Date(), data: { ...session.data, state: 'captured' } } });
     }
@@ -323,6 +300,7 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
       await tx.payment.update({ where: { id: p.id }, data: { refundedAmount: refunded, status: refunded >= p.amount ? 'refunded' : 'partially_refunded' } });
       if (p.paymentCollectionId) await tx.paymentCollection.update({ where: { id: p.paymentCollectionId }, data: { refundedAmount: { increment: leg.amount } } });
     }
+    if (settled && newlySettled && legs.length && !a.tenderOnly) await audit(tx, a.actorId, 'refund.succeeded', 'Refund', legs[0].id, null, { amount: total, legs: legs.map((l: any) => ({ id: l.id, status: outcomes.get(l.id)?.status || l.status })) }, a.reason, a.key);
     if (!settled) await audit(tx, a.actorId, 'refund.unresolved', 'Refund', legs[0].id, null, { legs: legs.map((l: any) => ({ id: l.id, status: outcomes.get(l.id)?.status || l.status })) }, 'Reconcile with the provider before retrying', a.key);
     else if (a.tenderOnly) { if (newlySettled) await audit(tx, a.actorId, 'refund.settled', 'Booking', b.id, null, { amount: total, legs: legs.length }, a.reason, a.key); }
     else if (!legs.length || newlySettled) {
@@ -352,7 +330,9 @@ export async function cancelMyBooking(_r: any, args: any, context: any) {
     await context.prisma.$transaction(async (tx: any) => {
       await lockTransactionKey(tx, `departure:${booking.departureId}`);
       const gone = await tx.booking.updateMany({ where: { id: booking.id, status: 'pending_payment' }, data: { status: 'cancelled' } });
-      if (!gone.count || !booking.holdId) return;
+      if (!gone.count) return;
+      await audit(tx, null, 'booking.cancelled', 'Booking', booking.id, { status: 'pending_payment' }, { status: 'cancelled' }, 'Guest cancelled an unpaid checkout', `cancel-unpaid:${booking.id}`);
+      if (!booking.holdId) return;
       await tx.inventoryHold.updateMany({ where: { id: booking.holdId, status: 'active' }, data: { status: 'released' } });
       await releaseHoldPromos(tx, [booking.holdId]);
     }, { timeout: 20000 });
@@ -518,9 +498,8 @@ export async function sweepDepartures(_r: any, args: any, context: any) {
     let waitlistOffers = 0;
     const waitingOn = await tx.waitlistEntry.findMany({ where: { status: { in: ['waiting', 'offered'] }, departure: { startAt: { gt: new Date() } } }, select: { departureId: true }, distinct: ['departureId'], take: 200 });
     for (const { departureId } of waitingOn) { await lockTransactionKey(tx, `departure:${departureId}`); waitlistOffers += (await promoteWaitlist(tx, departureId, user.id)).offered; }
-    const { reminders, suppressedReminders } = await queueDayBeforeReminders(tx, user.id);
-    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, reminders, suppressedReminders, waitlistOffers, lapsedHolds: lapsed });
-    return { tasks, closed, reminders, suppressedReminders, waitlistOffers, lapsedHolds: lapsed };
+    await audit(tx, user.id, 'departures.swept', 'Departure', 'sweep', null, { tasks, closed, waitlistOffers, lapsedHolds: lapsed });
+    return { tasks, closed, waitlistOffers, lapsedHolds: lapsed };
   });
 }
 

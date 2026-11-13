@@ -62,7 +62,7 @@ function Groups({ title, groups }: { title: string; groups: Group[] }) {
     <section className="space-y-2" aria-label={`By ${title}`}>
       <h2 className="font-mono text-xs uppercase tracking-wide text-muted-foreground">By {title}</h2>
       <ul className="space-y-2">
-        {groups.map((g) => (<li key={g.name} className="min-w-0 rounded-xl border p-3" data-group={title}><p className="mb-2 break-words font-semibold">{g.name}</p><Figures t={g} /></li>))}
+        {groups.map((g) => (<li key={g.name} className="min-w-0 rounded-xl border p-3" data-group={title}><p className="mb-2 break-words font-semibold">{title === 'source' ? g.name.replaceAll('_', ' ') : g.name}</p><Figures t={g} /></li>))}
         {!groups.length && <li className="text-sm text-muted-foreground">No sales in this range.</li>}
       </ul>
     </section>

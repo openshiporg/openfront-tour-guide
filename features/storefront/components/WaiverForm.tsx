@@ -26,7 +26,7 @@ export function WaiverForm({ token, waiver }: { token: string; waiver: any }) {
       <Input placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={agree} onCheckedChange={(v) => setAgree(v === true)} />I have read and agree</label>
       {error && <p className="text-sm text-rose-600">{error}</p>}
-      <Button disabled={!name || !agree || (guardian && !minor)} onClick={submit}>Sign</Button>
+      <Button className="h-11" disabled={!name || !agree || (guardian && !minor)} onClick={submit}>Sign</Button>
     </div>
   )
 }

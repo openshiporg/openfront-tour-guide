@@ -236,7 +236,7 @@ export async function completePartyChange(_r: any, args: any, context: any) {
       const c = await tx.partyChange.findUnique({ where: { id: change.id } });
       if (c.status !== 'pending_payment' && c.status !== 'cancelled') return; // applied or failed by a concurrent call
       // The money is captured either way, so it is recorded as the booking's second payment before deciding.
-      await tx.payment.upsert({ where: { idempotencyKey: `party-change:${c.id}` }, update: {}, create: { idempotencyKey: `party-change:${c.id}`, amount: c.collectCents, currencyCode: c.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', paymentProviderId: prov.id, providerPaymentId: c.paymentIntentId, orderId: b.id, processedAt: new Date(), isSplitPayment: true, notes: 'Party change difference', data: { paymentIntentId: c.paymentIntentId, partyChangeId: c.id } } });
+      await tx.payment.upsert({ where: { idempotencyKey: `party-change:${c.id}` }, update: {}, create: { idempotencyKey: `party-change:${c.id}`, amount: c.collectCents, currencyCode: c.currencyCode, status: 'succeeded', paymentMethod: 'credit_card', cardBrand: observed?.cardBrand || '', cardLast4: observed?.cardLast4 || '', paymentProviderId: prov.id, providerPaymentId: c.paymentIntentId, orderId: b.id, processedAt: new Date(), isSplitPayment: true, notes: 'Party change difference', data: { paymentIntentId: c.paymentIntentId, partyChangeId: c.id } } });
       const P = c.plan;
       const hold = c.holdId ? await tx.inventoryHold.findUnique({ where: { id: c.holdId } }) : null;
       const held = !!hold && hold.status === 'active' && hold.expiresAt > new Date();

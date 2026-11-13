@@ -1,4 +1,4 @@
-// Scratch-DB proof of the weather cancellation workflow: required reason, audit, one notice per booking honouring weatherCancellation,
+// Scratch-DB proof of the weather cancellation workflow: required reason, audit,
 // a rebook, a refund, and an over-threshold refund that needs a second manager. No transport. Fixtures are depth-*.
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
@@ -38,25 +38,19 @@ async function main() {
   // 2. Cancel: departure weather_cancelled, audited with the reason, bookings stay live awaiting the guest's choice (nothing auto-refunded).
   const k = key();
   const res = await weatherCancelDeparture(null, { input: { departureId: dep.id, reason: 'Gale warning' }, idempotencyKey: k }, ca);
-  assert.deepEqual([res.awaitingChoice, res.noticesQueued, res.noticesHeldBack], [5, 4, 1]);
+  assert.equal(res.awaitingChoice, 5);
   assert.equal((await p.departure.findUnique({ where: { id: dep.id } })).status, 'weather_cancelled');
   const ev = await p.auditEvent.findMany({ where: { action: 'departure.weather_cancelled', targetId: dep.id } });
   assert.equal(ev.length, 1); assert.equal(ev[0].reason, 'Gale warning'); assert.equal(ev[0].actorId, a.id);
   for (const bk of [rebookB, refundB, bigB]) assert.equal((await p.booking.findUnique({ where: { id: bk.id } })).status, 'confirmed');
-  // 3. Notices honour weatherCancellation (not bookingUpdates); the message offers rebook or full refund.
-  assert.equal((await wx(rebookB.id))[0].action, 'notification.queued');
-  assert.match((await wx(rebookB.id))[0].after.text, /rebook/); assert.match((await wx(rebookB.id))[0].after.text, /\$50\.00/);
-  const held = (await wx(wxOutB.id))[0]; assert.equal(held.action, 'notification.suppressed'); assert.match(held.reason, /weather/);
-  assert.equal((await wx(updOutB.id))[0].action, 'notification.queued');
-  // 4. Replay of the same key, and a second cancel with a new key, add no duplicate notices.
+  // 3. Replay of the same key, and a second cancel with a new key, change nothing and send no notices.
   await weatherCancelDeparture(null, { input: { departureId: dep.id, reason: 'Gale warning' }, idempotencyKey: k }, ca);
   const again = await weatherCancelDeparture(null, { input: { departureId: dep.id, reason: 'Gale warning' }, idempotencyKey: key() }, ca);
-  assert.deepEqual([again.noticesQueued, again.noticesHeldBack], [0, 0]); assert.equal((await wx(rebookB.id)).length, 1);
+  assert.equal(again.awaitingChoice, 5); assert.equal((await wx(rebookB.id)).length, 0);
   // 5. Operator view lists the waiting guests with same-tour options that have room.
   const view = (await weatherCancellations(null, {}, ca)).departures.find((d: any) => d.id === dep.id);
   assert.equal(view.reason, 'Gale warning'); assert.equal(view.bookings.length, 5);
-  const row = view.bookings.find((x: any) => x.id === rebookB.id); assert.equal(row.notice, 'queued'); assert.ok(row.options.some((o: any) => o.id === other.id)); assert.ok(!row.options.some((o: any) => o.id === dep.id));
-  assert.equal(view.bookings.find((x: any) => x.id === wxOutB.id).notice, 'held back');
+  const row = view.bookings.find((x: any) => x.id === rebookB.id); assert.ok(row.options.some((o: any) => o.id === other.id)); assert.ok(!row.options.some((o: any) => o.id === dep.id));
 
   // 6. REBOOK: onto another departure of the same tour at the same price. New booking confirmed, old one closed, audit, replay safe.
   const rk = key();
@@ -100,7 +94,7 @@ async function main() {
   assert.equal(after.bookings.length, 2); assert.equal(after.resolved, 3);
   // 10. A normal departure and a plain operator cancel are untouched by this path.
   await assert.rejects(() => weatherCancelDeparture(null, { input: { departureId: 'nope', reason: 'Gale warning' }, idempotencyKey: key() }, ca), /Departure not found/);
-  console.log('PASS weather cancellation: reason/audit/notices/rebook/refund/approval');
+  console.log('PASS weather cancellation: reason/audit/rebook/refund/approval');
   await p.$disconnect();
 }
 main().catch(async e => { console.error(e); await p.$disconnect(); process.exit(1); });

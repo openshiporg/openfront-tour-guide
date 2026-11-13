@@ -23,7 +23,8 @@ export async function getListByPath(path: string) {
     // Find the list by path
     const rawList = adminMeta.lists.find((l: any) => l.path === path)
     
-    if (!rawList) {
+    // A list hidden from this session is a 404 for its list, create and item pages, the same check that hides the sidebar link.
+    if (!rawList || rawList.isHidden) {
       return undefined
     }
 

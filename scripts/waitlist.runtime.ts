@@ -1,7 +1,7 @@
 // Scratch-DB proof of the waitlist: join only when the party does not fit, one live entry per email, staff add needs permission,
 // a freed seat is offered (held) to the oldest party that fits, a new arrival cannot take an offered seat, the guest claims the offer and
 // books through the normal checkout, staff books an offer for cash (replay-safe), leaving releases the seats to the next party, a resize
-// offers added seats, lapsed offers expire and pass on, a weather cancel closes the waitlist, and the offer notice is queued. Fixtures are depth-*.
+// offers added seats, lapsed offers expire and pass on, a weather cancel closes the waitlist, and Fixtures are depth-*.
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -58,7 +58,6 @@ async function main() {
   const hold1 = await p.inventoryHold.findUnique({ where: { id: r1.offerHoldId } });
   assert.equal(hold1.status, 'active'); assert.equal(hold1.quantity, 1); assert.ok(hold1.expiresAt > new Date(Date.now() + 3600000));
   await assert.rejects(() => book(full), /Not enough seats/);
-  assert.ok(await p.auditEvent.findFirst({ where: { targetList: 'Notification', targetId: `waitlist_offer:${e1.entryId}`, action: 'notification.queued' } }), 'offer notice queued');
   const board: any = await waitlistBoard(null, {}, ops);
   assert.deepEqual(board.filter((r: any) => r.departureId === full.id).map((r: any) => r.status), ['offered', 'waiting', 'waiting']);
   await assert.rejects(() => waitlistBoard(null, {}, guide), /Not authorized/);
@@ -107,7 +106,7 @@ async function main() {
   const e5: any = await join(full, 'five', [{ id: adult.id, qty: 1 }]);
   const seatOwner = await p.booking.findUnique({ where: { bookingRef: started.bookingRef } });
   await refundBooking(null, { idempotencyKey: key(), input: { bookingId: seatOwner.id, amountCents: 0, reason: 'Guest cannot come', cancelBooking: true } }, ops);
-  let r4 = await entry(e4.entryId); assert.equal(r4.status, 'offered');
+  const r4 = await entry(e4.entryId); assert.equal(r4.status, 'offered');
   await p.waitlistEntry.update({ where: { id: e4.entryId }, data: { offerExpiresAt: new Date(Date.now() - 1000) } });
   await p.inventoryHold.update({ where: { id: r4.offerHoldId }, data: { expiresAt: new Date(Date.now() - 1000) } });
   assert.equal((await waitlistStatus(null, { entryId: e4.entryId, token: waitlistToken(e4.entryId) }, anon) as any).status, 'expired');

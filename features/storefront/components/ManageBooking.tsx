@@ -69,7 +69,7 @@ export function ManageBooking() {
                 <ul className="space-y-2">{b.options.map((o: any) => (
                   <li key={o.id}><label className="flex min-w-0 cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm has-[:checked]:border-foreground"><input type="radio" name="departure" value={o.id} checked={pick === o.id} onChange={() => setPick(o.id)} /><span className="min-w-0 break-words">{when(o.startAt, b.timezone)}</span></label></li>
                 ))}</ul>
-                <Button onClick={move} disabled={!pick || busy}>Move my booking</Button>
+                <Button className="h-11" onClick={move} disabled={!pick || busy}>Move my booking</Button>
               </>
             )}
           </section>
@@ -77,8 +77,8 @@ export function ManageBooking() {
           <section className="space-y-2 border-t pt-3" aria-label="Cancel">
             <h2 className="text-base font-semibold">Cancel</h2>
             <p className="text-sm">If you cancel now you will be refunded <span className="font-mono">{money(b.refundIfCancelledCents, b.currencyCode)}</span> of {money(b.totalCents - b.refundedCents, b.currencyCode)}.</p>
-            {!confirmCancel ? <Button variant="outline" onClick={() => setConfirmCancel(true)}>Cancel booking</Button> : (
-              <div className="flex flex-wrap gap-2"><Button variant="destructive" onClick={cancel} disabled={busy}>Yes, cancel and refund {money(b.refundIfCancelledCents, b.currencyCode)}</Button><Button variant="outline" onClick={() => setConfirmCancel(false)} disabled={busy}>Keep my booking</Button></div>
+            {!confirmCancel ? <Button className="h-11" variant="outline" onClick={() => setConfirmCancel(true)}>Cancel booking</Button> : (
+              <div className="flex flex-wrap gap-2"><Button className="h-11" variant="destructive" onClick={cancel} disabled={busy}>Yes, cancel and refund {money(b.refundIfCancelledCents, b.currencyCode)}</Button><Button className="h-11" variant="outline" onClick={() => setConfirmCancel(false)} disabled={busy}>Keep my booking</Button></div>
             )}
           </section>
         </>

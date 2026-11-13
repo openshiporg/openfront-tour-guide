@@ -2,13 +2,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { command, audit, authorize, derivedToken, hashToken, departureOccupancy, lockTransactionKey, userFacingError } from '../lib/tour-command';
 import { pickOffers, offerExpiry, positionOf, waitlistLinkPath } from '../lib/tour-waitlist';
 import { placeHold } from './tour-catalog';
-import { newBooking, confirmBooking, queueGuestNotification } from './tour-checkout';
+import { newBooking, confirmBooking } from './tour-checkout';
 
 // Waitlist for a full departure (Gym Waitlist + classCapacity donor, adapted). A guest (online) or the operator (phone) joins when the party
 // does not fit. When seats free up (a cancel, a move away, a resize, an expired hold) the departure's lock holder calls promoteWaitlist in the
 // same transaction: offers go oldest first, each offer is a real InventoryHold for the party's seats until the offer window ends, so a new
-// arrival cannot take the seats. The guest books the held seats through the normal checkout; staff can book them for cash. No transport:
-// the offer notice is queued like every other guest notice.
+// arrival cannot take the seats. The guest books the held seats through the normal checkout; staff can book them for cash.
 const OPEN = ['on_sale', 'confirmed', 'min_not_met', 'full'];
 const LIVE = ['waiting', 'offered'];
 export const waitlistToken = (entryId: string) => derivedToken('waitlist', entryId);
@@ -58,7 +57,6 @@ export async function promoteWaitlist(tx: any, departureId: string, actorId: str
     }
     await tx.waitlistEntry.update({ where: { id: e.id }, data: { status: 'offered', offerHoldId: hold.holdId, offeredAt: now, offerExpiresAt: until } });
     await audit(tx, actorId, 'waitlist.offered', 'WaitlistEntry', e.id, { status: 'waiting' }, { status: 'offered', holdId: hold.holdId, seats: e.seats, offerExpiresAt: until });
-    await queueGuestNotification(tx, 'waitlist_offer', { id: e.id, bookingRef: '', guestName: e.guestName, guestEmail: e.guestEmail }, { tourName: d.tour.name, startAt: d.startAt, timezone: d.tour.timezone, offerExpiresAt: until, seats: e.seats }, actorId);
     offered++;
   }
   return { offered, expired };

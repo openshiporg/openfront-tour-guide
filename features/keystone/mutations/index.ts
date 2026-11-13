@@ -12,7 +12,6 @@ import { salesReport, exportSalesCsv } from './tour-reports';
 import { participantWaiver, captureWaiverOnSite } from './tour-waiver-capture';
 import { manageBooking, cancelManagedBooking, rescheduleManagedBooking, resetGuestLink, moveBooking, bookingMoveOptions } from './tour-self-service';
 import { weatherCancelDeparture, rebookWeatherBooking, weatherCancellations } from './tour-weather';
-import { guestNotifications } from './tour-notification-queue';
 import { partyChangeQuote, changeParty, completePartyChange, bookingParty, bookingPartyQuote, changeBookingParty } from './tour-party-change';
 import { issueGiftCard, voidGiftCard, revealGiftCardCode, giftCardBoard, giftCardBalance } from './tour-gift-cards';
 import { joinWaitlist, addToWaitlist, waitlistStatus, claimWaitlistOffer, leaveWaitlist, withdrawWaitlistEntry, bookWaitlistOffer, waitlistBoard } from './tour-waitlist';
@@ -98,7 +97,6 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         partyChangeQuote(bookingRef: String!, token: String!, input: PartyChangeInput!): JSON
         bookingParty(bookingId: ID!): JSON
         bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
-        guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
         pricingRuleBoard: JSON
       }
       type Mutation {
@@ -156,7 +154,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       }
     ` + storeLogoTypeDefs,
     resolvers: {
-      Query: { pricingRuleBoard, storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, guestNotifications, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, bookingRefExists, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
+      Query: { pricingRuleBoard, storeLogo, giftCardBoard, giftCardBalance, partyChangeQuote, bookingParty, bookingPartyQuote, waitlistStatus, waitlistBoard, manageBooking, bookingMoveOptions, myDepartures, pickupSheet, dayPickupSheet, salesReport, operatorBookingByKey, weatherCancellations, participantWaiver, redirectToInit, departuresInRange, departureManifest, waiverForToken, checkoutHold, bookingRefExists, operatorName: async (_r: any, _a: any, c: any) => (await c.sudo().query.StoreSettings.findMany({ take: 1, query: 'name' }))[0]?.name || null, tourTotal: async (_r: any, _a: any, c: any) => c.session?.itemId ? c.sudo().query.Tour.count({}) : 0, toursOnSale, tourAvailability, lookupBooking },
       Mutation: {
         createDepartureHold, startBookingCheckout, completeBookingCheckout, cancelMyBooking, cancelManagedBooking, rescheduleManagedBooking, signWaiver, rebookWithCredit,
         generateDepartures, assignGuide, respondToAssignment, assignResource, unassignResource, resizeDeparture, checkInParticipant, markNoShow, undoNoShow, syncOfflineCheckIns, resetGuestLink, moveBooking,

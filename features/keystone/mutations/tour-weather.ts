@@ -1,13 +1,12 @@
 import { command, audit, authorize, occupancyNumbers, derivedToken, userFacingError } from '../lib/tour-command';
 import { placeHold } from './tour-catalog';
-import { confirmBooking, newBooking, queueGuestNotification } from './tour-checkout';
+import { confirmBooking, newBooking } from './tour-checkout';
 import { closeWaitlist } from './tour-waitlist';
 
 const PENDING = ['confirmed', 'checked_in', 'partially_refunded'];
 const OPEN_FOR_SALE = ['on_sale', 'confirmed', 'min_not_met'];
 
-// Weather cancellation. The departure is cancelled with a required reason, every booking gets a weatherCancellation notice
-// (queued, or held back by the guest's preference; no transport) and then WAITS for the guest's choice: a rebook onto another
+// Weather cancellation. The departure is cancelled with a required reason, every booking then WAITS for the guest's choice: a rebook onto another
 // departure of the same tour (rebookWeatherBooking) or a full refund, which goes through the normal approval-bound refundBooking.
 export async function weatherCancelDeparture(_r: any, args: any, context: any) {
   try { return await weatherCancelCore(args, context); } catch (e) { throw userFacingError(e); }
@@ -34,12 +33,7 @@ async function weatherCancelCore(args: any, context: any) {
       await audit(tx, user.id, 'departure.weather_cancelled', 'Departure', d.id, { status: d.status }, { status: 'weather_cancelled' }, reason, args.idempotencyKey);
     }
     const bookings = await tx.booking.findMany({ where: { departureId: d.id, status: { in: PENDING } } });
-    let queued = 0, suppressed = 0;
-    for (const b of bookings) {
-      const r = await queueGuestNotification(tx, 'weather_cancellation', b, { tourName: d.tour.name, startAt: d.startAt, timezone: d.tour.timezone, refundCents: b.totalCents - b.refundedCents, currency: b.currencyCode, meetingPoint: null }, user.id);
-      if (r === 'notification.queued') queued++; else if (r) suppressed++;
-    }
-    return { departureId: d.id, awaitingChoice: bookings.length, noticesQueued: queued, noticesHeldBack: suppressed };
+    return { departureId: d.id, awaitingChoice: bookings.length };
   });
 }
 
@@ -92,8 +86,6 @@ export async function weatherCancellations(_r: any, _a: any, context: any) {
   if (!deps.length) return { departures: [] };
   const depIds = deps.map((d: any) => d.id);
   const bookings = await db.booking.findMany({ where: { departureId: { in: depIds }, status: { in: [...PENDING, 'refunded', 'cancelled'] } }, orderBy: { createdAt: 'asc' }, take: 600 });
-  const noticeRows = bookings.length ? await db.auditEvent.findMany({ where: { targetList: 'Notification', targetId: { in: bookings.map((b: any) => `weather_cancellation:${b.id}`) } } }) : [];
-  const notice = new Map(noticeRows.map((n: any) => [n.targetId, n.action === 'notification.queued' ? 'queued' : 'held back']));
   const reasons = await db.auditEvent.findMany({ where: { action: 'departure.weather_cancelled', targetId: { in: depIds } }, orderBy: { createdAt: 'desc' } });
   const reasonOf = new Map(reasons.map((a: any) => [a.targetId, a.reason]));
   const tourIds = [...new Set(deps.filter((d: any) => bookings.some((b: any) => b.departureId === d.id && PENDING.includes(b.status))).map((d: any) => d.tourId))] as string[];
@@ -109,7 +101,7 @@ export async function weatherCancellations(_r: any, _a: any, context: any) {
       const pending = mine.filter((b: any) => PENDING.includes(b.status));
       return {
         id: d.id, startAt: d.startAt, tourName: d.tour.name, reason: reasonOf.get(d.id) || '', resolved: mine.length - pending.length,
-        bookings: pending.map((b: any) => ({ id: b.id, bookingRef: b.bookingRef, guestName: b.guestName, guestEmail: b.guestEmail, seats: b.seats, balanceCents: b.totalCents - b.refundedCents, currencyCode: b.currencyCode, canRebook: !b.channelId, notice: notice.get(`weather_cancellation:${b.id}`) || 'none',
+        bookings: pending.map((b: any) => ({ id: b.id, bookingRef: b.bookingRef, guestName: b.guestName, guestEmail: b.guestEmail, seats: b.seats, balanceCents: b.totalCents - b.refundedCents, currencyCode: b.currencyCode, canRebook: !b.channelId,
           options: (options.get(d.tourId) || []).filter((o) => o.remaining >= (b.seats || 1)) })),
       };
     }),

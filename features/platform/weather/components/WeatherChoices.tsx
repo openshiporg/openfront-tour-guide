@@ -39,7 +39,7 @@ export function WeatherChoices({ departures, thresholdCents }: { departures: any
   if (!departures.length) return <p className="p-4 text-sm text-muted-foreground">No weather-cancelled departures. Cancel one from Today with Weather cancel.</p>
   return (
     <div className="space-y-4 p-4">
-      <p className="text-sm text-muted-foreground">Each guest has been sent a notice (or held back by their preference). Rebooking needs a same-tour departure at the price they paid; a full refund over {money(thresholdCents, 'USD')} needs another manager's approval.</p>
+      <p className="text-sm text-muted-foreground">Contact each guest yourself. Rebooking needs a same-tour departure at the price they paid; a full refund over {money(thresholdCents, 'USD')} needs another manager&apos;s approval.</p>
       {message && <p role={message.kind === 'ok' ? 'status' : 'alert'} className={message.kind === 'ok' ? 'font-mono text-xs uppercase tracking-wide text-emerald-700' : 'text-sm text-rose-600'}>{message.text}</p>}
       {departures.map((d) => (
         <section key={d.id} className="min-w-0 space-y-2" aria-label={`${d.tourName} weather cancellation`}>
@@ -50,7 +50,6 @@ export function WeatherChoices({ departures, thresholdCents }: { departures: any
               <li key={b.id} className="min-w-0 rounded-xl border p-3 text-sm" data-booking={b.bookingRef}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0"><p className="truncate font-semibold">{b.guestName}</p><p className="break-words text-muted-foreground">{b.bookingRef} · {b.seats} seat{b.seats === 1 ? '' : 's'} · {money(b.balanceCents, b.currencyCode)}</p></div>
-                  <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">Notice: {b.notice}</span>
                 </div>
                 <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
                   {b.canRebook ? (
