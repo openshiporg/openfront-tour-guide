@@ -3,7 +3,7 @@ import { useMcpScopeGuard } from '../../features/keystone/mcp-oauth/guard'
 import { createYoga, maskError } from "graphql-yoga";
 import { GraphQLError } from 'graphql'
 import { constraintRefusal, constraintGraphQLError } from '../../features/keystone/lib/constraint-errors'
-// @ts-ignore
+// @ts-expect-error graphql-upload ships no types
 import processRequest from "graphql-upload/processRequest.js";
 import { type NextApiRequest, type NextApiResponse } from 'next'
 
@@ -20,29 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   return createYoga({
-    renderGraphiQL: () => {
-      return `
-        <!DOCTYPE html>
-        <html lang="en">
-          <body style="margin: 0; overflow-x: hidden; overflow-y: hidden">
-          <div id="sandbox" style="height:100vh; width:100vw;"></div>
-          <script src="https://embeddable-sandbox.cdn.apollographql.com/_latest/embeddable-sandbox.umd.production.min.js"></script>
-          <script>
-          new window.EmbeddedSandbox({
-            target: "#sandbox",
-            // Pass through your server href if you are embedding on an endpoint.
-            // Otherwise, you can pass whatever endpoint you want Sandbox to start up with here.
-            initialEndpoint: window.location.href,
-            hideCookieToggle: false,
-            initialState: {
-              includeCookies: true
-            }
-          });
-          // advanced options: https://www.apollographql.com/docs/studio/explorer/sandbox#embedding-sandbox
-          </script>
-          </body>
-        </html>`;
-    },
+    graphiql: false,
     graphqlEndpoint: "/api/graphql",
     schema: keystoneContext.graphql.schema,
     context: ({ req, res }: { req: any; res: any }) => {
@@ -58,6 +36,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     },
     // MCP OAuth scopes only narrow: read-only tokens can't mutate, no token can manage credentials.
-    plugins: [useMcpScopeGuard()],
+    plugins: [useMcpScopeGuard()], // eslint-disable-line react-hooks/rules-of-hooks
   })(req, res);
 }

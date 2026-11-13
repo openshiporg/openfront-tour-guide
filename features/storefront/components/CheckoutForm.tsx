@@ -23,7 +23,7 @@ function Pay({ bookingRef, email, onError }: { bookingRef: string; email: string
     if (!done.ok) return onError(done.error)
     router.push(`/bookings/${bookingRef}`)
   }
-  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
+  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], layout: { type: 'accordion', defaultCollapsed: false, radios: false, spacedAccordionItems: false }, wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
 }
 
 export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string; hold: any; publishableKey: string }) {
