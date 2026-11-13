@@ -5,7 +5,7 @@ import { domainList, name, state, rel } from './domainFields';
 const Participant0 = domainList('canCheckIn', { booking: rel('Booking.participants'), ticketTypeSnapshot: json({ ui: { listView: { fieldMode: 'hidden' }, createView: { fieldMode: 'hidden' } } }), fullName: name(), age: integer({ validation: { min: 0 } }), email: text(), dietary: text(), medicalNotes: text({ access: { read: permissions.canReadMedicalNotes, create: () => false, update: () => false } }), waiverStatus: state(['required','signed','not_required']), checkInStatus: state(['pending','checked_in','no_show']), waiverTokenHash: text({ isIndexed: 'unique', db: { isNullable: true }, access: { read: () => false } }), signatures: rel('WaiverSignature.participant', true) }, true);
 // A guide reads only the participants (and signatures) on departures where their own assignment is accepted or worked.
 // Operations roles (manage departures or bookings) read everyone. Same rule as lib/tour-scope.ts, as a Keystone query filter.
-const onMyDepartures = (session: any) => ({ departure: { assignedGuides: { some: { status: { in: ['accepted', 'worked'] }, guide: { userId: { equals: session.itemId } } } } } });
+const onMyDepartures = (session: any) => ({ departure: { assignedGuides: { some: { status: { in: ['accepted', 'worked'] }, guide: { user: { id: { equals: session.itemId } } } } } } });
 const scopedQuery = (forSignature: boolean) => ({ session }: any) => {
   if (!session?.itemId) return false;
   const role = session.data?.role;
