@@ -23,7 +23,7 @@ function Pay({ bookingRef, email, onError }: { bookingRef: string; email: string
     if (!done.ok) return onError(done.error)
     router.push(`/bookings/${bookingRef}`)
   }
-  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], layout: { type: 'accordion', defaultCollapsed: false, radios: false, spacedAccordionItems: false }, wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
+  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], layout: { type: 'accordion', defaultCollapsed: false, radios: false, spacedAccordionItems: false }, wallets: { applePay: 'never', googlePay: 'never', link: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>Pay</Button></div>
 }
 
 export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string; hold: any; publishableKey: string }) {
@@ -45,10 +45,11 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
     if (r.card.currencyCode !== quote.currencyCode) return setGiftError(`This gift card is in ${r.card.currencyCode}`)
     setGift({ ...r.card, code: giftCode })
   }
-  const [left, setLeft] = React.useState(() => Math.max(0, new Date(hold.expiresAt).getTime() - Date.now()))
+  // Starts unknown so the server and the first client render match (a clock read here caused hydration error 418 on reload).
+  const [left, setLeft] = React.useState<number | null>(null)
   const key = React.useRef(crypto.randomUUID())
   const stripePromise = React.useMemo(() => (publishableKey ? loadStripe(publishableKey) : null), [publishableKey])
-  React.useEffect(() => { const t = setInterval(() => setLeft(Math.max(0, new Date(hold.expiresAt).getTime() - Date.now())), 1000); return () => clearInterval(t) }, [hold.expiresAt])
+  React.useEffect(() => { const tick = () => setLeft(Math.max(0, new Date(hold.expiresAt).getTime() - Date.now())); tick(); const t = setInterval(tick, 1000); return () => clearInterval(t) }, [hold.expiresAt])
 
   const begin = async () => {
     setError('')
@@ -57,10 +58,11 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
     if (!r.checkout.clientSecret) { const done = await completeCheckout(r.checkout.bookingRef, `complete:${r.checkout.bookingRef}`); sessionStorage.setItem('tg_email', lead.email); return done.ok ? router.push(`/bookings/${r.checkout.bookingRef}`) : setError(done.error) }
     setCheckout(r.checkout)
   }
-  const hh = Math.floor(left / 3600000), mm = String(Math.floor((left % 3600000) / 60000)).padStart(2, '0'), ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
+  const ms = left ?? 0
+  const hh = Math.floor(ms / 3600000), mm = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0'), ss = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-xl font-semibold">{quote.tour.name}</h1><p className="text-sm text-muted-foreground">{when(quote.tour.startAt, quote.tour.timezone)}</p></div><p className="font-mono text-sm">Held {hh > 0 ? `${hh}h ${mm}m` : `${mm}:${ss}`}</p></header>
+      <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-xl font-semibold">{quote.tour.name}</h1><p className="text-sm text-muted-foreground">{when(quote.tour.startAt, quote.tour.timezone)}</p></div><p className="font-mono text-sm">Held {left === null ? '' : hh > 0 ? `${hh}h ${mm}m` : `${mm}:${ss}`}</p></header>
       <ul className="space-y-1 text-sm">{quote.lines.map((l: any, i: number) => <li key={i} className="flex justify-between gap-2"><span>{l.qty} × {l.name}</span><span className="font-mono">{money(l.unitPriceCents * l.qty, quote.currencyCode)}</span></li>)}
         {quote.discountCents > 0 && <li className="flex justify-between"><span>Discount</span><span className="font-mono">−{money(quote.discountCents, quote.currencyCode)}</span></li>}
         {quote.taxCents > 0 && <li className="flex justify-between"><span>Tax</span><span className="font-mono">{money(quote.taxCents, quote.currencyCode)}</span></li>}

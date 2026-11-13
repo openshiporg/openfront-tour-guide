@@ -16,9 +16,12 @@ export const derivedToken = (purpose: string, id: string) => createHmac('sha256'
 export const manageToken = (bookingId: string, version = 0) => derivedToken('manage', version ? `${bookingId}\0v${version}` : bookingId);
 export function assertProof(token: string, hash: string) { const actual = hashToken(token || ''); if (!hash || actual.length !== hash.length || !timingSafeEqual(Buffer.from(actual), Buffer.from(hash))) throw new Error('Booking not found'); }
 export async function authorize(context: any, capability: Permission) {
-  if (!context.session?.itemId || !permissions[capability]({ session: context.session })) throw new Error('Not authorized');
+  // A coded GraphQLError so the refusal reaches the person in words (a plain Error is masked as "Unexpected error.").
+  if (!context.session?.itemId) throw new GraphQLError('Not authorized: sign in first.', { extensions: { code: 'KS_ACCESS_DENIED' } });
+  const denied = () => new GraphQLError('Not authorized: your role cannot do this.', { extensions: { code: 'KS_ACCESS_DENIED' } });
+  if (!permissions[capability]({ session: context.session })) throw denied();
   const user = await context.prisma.user.findUnique({ where: { id: context.session.itemId }, include: { role: true } });
-  if (!user?.role?.[capability]) throw new Error('Not authorized');
+  if (!user?.role?.[capability]) throw denied();
   return user;
 }
 // Gym classCapacity donor: advisory lock and all recounts/writes share the same transaction.

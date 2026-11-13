@@ -13,6 +13,7 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
   const router = useRouter()
   const days = React.useMemo(() => new Set(departures.map((d) => dayOf(d.startAt))), [departures])
   const [day, setDay] = React.useState<Date | undefined>()
+  const [calendarOpen, setCalendarOpen] = React.useState(false)
   const [departureId, setDepartureId] = React.useState<string>('')
   const [qty, setQty] = React.useState<Record<string, number>>({})
   const [addOns, setAddOns] = React.useState<Record<string, number>>({})
@@ -50,9 +51,9 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
     <div className="space-y-5">
       <section className="space-y-2">
         <h2 className="text-base font-semibold">Date</h2>
-        <Popover>
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
           <PopoverTrigger asChild><Button variant="outline" className="h-11">{day ? day.toDateString() : 'Choose a date'}</Button></PopoverTrigger>
-          <PopoverContent className="w-auto p-0"><Calendar classNames={{ day: 'size-11', day_button: 'size-11', weekday: 'size-11', button_previous: 'size-11', button_next: 'size-11', month_caption: 'h-11 mx-11' }} mode="single" selected={day} onSelect={(d) => { setDay(d); setDepartureId('') }} disabled={(d) => !days.has(new Intl.DateTimeFormat('en-CA').format(d))} /></PopoverContent>
+          <PopoverContent className="w-auto p-0"><Calendar classNames={{ day: 'size-11', day_button: 'size-11', weekday: 'size-11', button_previous: 'size-11', button_next: 'size-11', month_caption: 'h-11 mx-11' }} mode="single" selected={day} onSelect={(d) => { setDay(d); setDepartureId(''); if (d) setCalendarOpen(false) }} disabled={(d) => !days.has(new Intl.DateTimeFormat('en-CA').format(d))} /></PopoverContent>
         </Popover>
         <div className="flex flex-wrap gap-2">
           {slots.map((d) => <Button key={d.id} className="h-11" variant={departureId === d.id ? 'default' : 'outline'} onClick={() => { setDepartureId(d.id); setJoined(null) }}>{when(d.startAt).split(', ').pop()} · {d.remaining > 0 ? `${d.remaining} left` : 'full, waitlist'}</Button>)}

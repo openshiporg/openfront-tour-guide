@@ -5978,6 +5978,7 @@ type Query {
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
   redirectToInit: Boolean
   tourTotal: Int
+  isGuide: Boolean
   operatorName: String
   checkoutHold(holdId: ID!, token: String!): JSON
   bookingRefExists(bookingRef: String!): Boolean

@@ -18,7 +18,7 @@ function PayDifference({ onPaid, onError }: { onPaid: () => Promise<void>; onErr
     if (r.error) { setBusy(false); return onError(r.error.message || 'Payment failed') }
     await onPaid(); setBusy(false)
   }
-  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], layout: { type: 'accordion', defaultCollapsed: false, radios: false, spacedAccordionItems: false }, wallets: { applePay: 'never', googlePay: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>{busy ? 'Paying…' : 'Pay the difference'}</Button></div>
+  return <div className="space-y-3"><PaymentElement options={{ paymentMethodOrder: ['card'], layout: { type: 'accordion', defaultCollapsed: false, radios: false, spacedAccordionItems: false }, wallets: { applePay: 'never', googlePay: 'never', link: 'never' } }} /><Button className="h-11 w-full" disabled={busy || !stripe} onClick={pay}>{busy ? 'Paying…' : 'Pay the difference'}</Button></div>
 }
 
 // Manage-link section: add or remove people. Costs more: pay the difference by card, the change applies once paid. Costs less: the

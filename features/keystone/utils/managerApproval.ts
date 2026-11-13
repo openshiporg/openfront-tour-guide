@@ -68,7 +68,7 @@ export async function approveManagerApproval(
       throw new Error("Not authorized to approve this manager action");
     }
     if (approval.requestedById === approverId) {
-      throw new Error("A manager cannot approve their own correction request");
+      throw new Error("You cannot approve your own refund request. Another manager must approve it.");
     }
     if (approval.status !== "pending") throw new Error(`Manager approval is already ${approval.status}`);
     if (new Date(approval.expiresAt) <= new Date()) {
@@ -96,7 +96,7 @@ export async function consumeManagerApproval(
   }
 ) {
   if (!input.approvalId) throw new Error("Independent manager approval is required");
-  if (!input.actorId) throw new Error("Authenticated correction actor is required");
+  if (!input.actorId) throw new Error("Sign in to continue");
   const approval = await tx.managerApproval.findUnique({ where: { id: input.approvalId } });
   if (!approval) throw new Error("Manager approval request not found");
   const requestPayload = normalizedRequest(input);
@@ -105,10 +105,10 @@ export async function consumeManagerApproval(
     approval.requestFingerprint !== idempotencyFingerprint(requestPayload) ||
     approval.requestedById !== input.actorId
   ) {
-    throw new Error("Manager approval does not match this correction request");
+    throw new Error("This approval does not match this refund request");
   }
   if (!approval.approvedById || approval.approvedById === input.actorId) {
-    throw new Error("Correction requires approval by a different manager");
+    throw new Error("This refund needs approval from a different manager");
   }
   if (approval.status !== "approved") throw new Error(`Manager approval is ${approval.status}`);
   if (new Date(approval.expiresAt) <= new Date()) throw new Error("Manager approval has expired");

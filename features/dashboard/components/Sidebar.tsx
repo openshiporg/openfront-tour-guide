@@ -50,6 +50,7 @@ interface User {
   operatorName?: string | null | undefined;
   onboardingStatus?: string;
   menuItemsCount?: number | null;
+  isGuide?: boolean;
   email: string;
   name?: string;
   role?: {

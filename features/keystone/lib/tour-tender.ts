@@ -28,3 +28,15 @@ export function allocateRefund(tenders: Tender[], amount: number): { paymentId: 
 // later legs add ~1, ~2. A replay finds every leg by the key or the key~ prefix.
 export const legKey = (key: string, index: number) => (index === 0 ? key : `${key}~${index}`);
 export const legWhere = (key: string) => ({ OR: [{ idempotencyKey: key }, { idempotencyKey: { startsWith: `${key}~` } }] });
+
+// Staff refund request checks, before anything is reserved: a refund moves money (0 is allowed only to cancel a booking with nothing
+// to give back), and a retry with the same idempotency key must ask for the same amount, or it would silently return the first refund.
+export function refundRequestRefusal(amount: number, cancel: boolean, priorLegs: { amount: number }[]): string | null {
+  if (!Number.isSafeInteger(amount) || amount < 0) return 'Refund amount must be a whole number of cents, 0 or more';
+  if (amount === 0 && !cancel) return 'Enter a refund amount above 0';
+  if (priorLegs.length) {
+    const prior = priorLegs.reduce((n, l) => n + l.amount, 0);
+    if (prior !== amount) return 'This request was already used for a different refund amount. Start a new refund.';
+  }
+  return null;
+}

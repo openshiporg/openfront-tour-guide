@@ -6,7 +6,7 @@ import { createPayment, getPaymentStatus, refundPayment } from '../utils/payment
 import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
 import { refundPolicyAmount, basisPoints, minimumDecision } from '../lib/tour-money';
 import { promoteWaitlist, markWaitlistConverted, closeWaitlist } from './tour-waitlist';
-import { allocateRefund, legKey, legWhere } from '../lib/tour-tender';
+import { allocateRefund, legKey, legWhere, refundRequestRefusal } from '../lib/tour-tender';
 import { findCardByCode, debitCard, returnToCard } from './tour-gift-cards';
 import { unusable, applyCard } from '../lib/tour-gift-card';
 import { assertMove } from '../lib/stateMachines';
@@ -350,7 +350,7 @@ export async function cancelMyBooking(_r: any, args: any, context: any) {
 export async function bookingRefExists(_r: any, args: any, context: any) {
   return !!await context.prisma.booking.findUnique({ where: { bookingRef: String(args.bookingRef || '').trim().toUpperCase() }, select: { id: true } });
 }
-export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); const booking = await context.prisma.booking.findUnique({ where: { id: args.bookingId } }); if (!booking || !LIVE.includes(booking.status)) throw userFacingError(new Error('Booking cannot be refunded')); if (!Number.isSafeInteger(args.amount) || args.amount < 1 || args.amount > booking.totalCents - booking.refundedCents) throw userFacingError(new Error('Amount must be between 1 cent and the unrefunded balance')); const reason = String(args.reason || '').trim(); const open = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: args.amount, reason, requestedById: context.session.itemId, status: { in: ['pending', 'approved'] }, expiresAt: { gt: new Date() } } }); if (open) return open; return requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); }
+export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); const booking = await context.prisma.booking.findUnique({ where: { id: args.bookingId } }); if (!booking || !LIVE.includes(booking.status)) throw userFacingError(new Error('Booking cannot be refunded')); if (!Number.isSafeInteger(args.amount) || args.amount < 1 || args.amount > booking.totalCents - booking.refundedCents) throw userFacingError(new Error('Amount must be between 1 cent and the unrefunded balance')); const reason = String(args.reason || '').trim(); const open = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: args.amount, reason, requestedById: context.session.itemId, status: { in: ['pending', 'approved'] }, expiresAt: { gt: new Date() } } }); if (open) return open; try { return await requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); } catch (e) { throw userFacingError(e); } }
 export async function approveRefund(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); try { return await approveManagerApproval(root, { approvalId: args.approvalId }, context); } catch (e) { throw userFacingError(e); } }
 export async function refundBooking(_r: any, args: any, context: any) {
   try { return await refundBookingInner(_r, args, context); } catch (e) { throw userFacingError(e); }
@@ -361,6 +361,9 @@ async function refundBookingInner(_r: any, args: any, context: any) {
   if (!booking || !LIVE.includes(booking.status)) throw new Error('Booking cannot be refunded');
   const settings = await context.prisma.storeSettings.findFirst();
   if (!i.reason?.trim()) throw new Error('Reason required');
+  const priorLegs = await context.prisma.refund.findMany({ where: { orderId: booking.id, ...legWhere(`refund:${args.idempotencyKey}`) }, select: { amount: true } });
+  const refusal = refundRequestRefusal(i.amountCents, !!i.cancelBooking, priorLegs);
+  if (refusal) throw new Error(refusal);
   // Above the threshold the refund needs a second manager's approval. The requester does not paste an id: the newest approved,
   // unexpired request for this exact booking, amount and reason that THEY filed is used (consumeManagerApproval re-checks it all).
   let approvalId = i.approvalId;

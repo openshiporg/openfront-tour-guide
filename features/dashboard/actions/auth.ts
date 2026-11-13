@@ -164,6 +164,7 @@ export async function getAuthenticatedUser() {
         }
       }
       tourTotal
+      isGuide
       operatorName
     }
   `;
