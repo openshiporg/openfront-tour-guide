@@ -6003,6 +6003,7 @@ type Query {
   partyChangeQuote(bookingRef: String!, token: String!, input: PartyChangeInput!): JSON
   bookingParty(bookingId: ID!): JSON
   bookingPartyQuote(bookingId: ID!, input: PartyChangeInput!): JSON
+  guestNotifications(status: String, departureId: ID, from: String, to: String, take: Int): JSON
   pricingRuleBoard: JSON
   storeLogo: StoreLogo!
 }
