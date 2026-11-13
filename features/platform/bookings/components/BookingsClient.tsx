@@ -14,7 +14,7 @@ import { STATUSES } from '../statuses'
 import { MoveBooking } from './MoveBooking'
 import { ChangeParty } from './ChangeParty'
 
-export function BookingsClient({ rows, counts, active, thresholdCents }: { rows: any[]; counts: Record<string, number>; active: string | null; thresholdCents: number }) {
+export function BookingsClient({ rows, counts, active, thresholdCents, canRefund }: { rows: any[]; counts: Record<string, number>; active: string | null; thresholdCents: number; canRefund: boolean }) {
   const router = useRouter()
   const [error, setError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
@@ -93,7 +93,7 @@ export function BookingsClient({ rows, counts, active, thresholdCents }: { rows:
                   </PopoverContent>
                 </Popover>
               )}
-              {['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'].includes(b.status) && (
+              {canRefund && ['confirmed', 'checked_in', 'completed', 'no_show', 'partially_refunded'].includes(b.status) && (
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline">Refund</Button></PopoverTrigger>
                   <PopoverContent className="w-72 space-y-2">

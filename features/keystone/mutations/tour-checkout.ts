@@ -353,6 +353,9 @@ export async function bookingRefExists(_r: any, args: any, context: any) {
 export async function requestRefundApproval(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); const booking = await context.prisma.booking.findUnique({ where: { id: args.bookingId } }); if (!booking || !LIVE.includes(booking.status)) throw userFacingError(new Error('Booking cannot be refunded')); if (!Number.isSafeInteger(args.amount) || args.amount < 1 || args.amount > booking.totalCents - booking.refundedCents) throw userFacingError(new Error('Amount must be between 1 cent and the unrefunded balance')); const reason = String(args.reason || '').trim(); const open = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: args.amount, reason, requestedById: context.session.itemId, status: { in: ['pending', 'approved'] }, expiresAt: { gt: new Date() } } }); if (open) return open; return requestManagerApproval(root, { actionType: 'refund_booking', targetId: args.bookingId, reason: args.reason, amount: args.amount }, context); }
 export async function approveRefund(root: any, args: any, context: any) { await authorize(context, 'canIssueRefunds'); try { return await approveManagerApproval(root, { approvalId: args.approvalId }, context); } catch (e) { throw userFacingError(e); } }
 export async function refundBooking(_r: any, args: any, context: any) {
+  try { return await refundBookingInner(_r, args, context); } catch (e) { throw userFacingError(e); }
+}
+async function refundBookingInner(_r: any, args: any, context: any) {
   const user = await authorize(context, 'canIssueRefunds'); const i = args.input;
   const booking = await context.prisma.booking.findUnique({ where: { id: i.bookingId } });
   if (!booking || !LIVE.includes(booking.status)) throw new Error('Booking cannot be refunded');

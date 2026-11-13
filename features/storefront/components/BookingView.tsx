@@ -36,7 +36,7 @@ export function BookingView({ bookingRef, initialEmail }: { bookingRef: string; 
           {booking.meetingPoint && <p className="text-sm"><span className="font-medium">Meet at: </span>{booking.meetingPoint.name}, {booking.meetingPoint.address}. {booking.meetingPoint.instructions}</p>}
           <ul className="space-y-1 text-sm">{booking.lines.map((l: any, i: number) => <li key={i}>{l.qty} × {l.name}</li>)}</ul>
           {booking.waivers.length > 0 && <div><h2 className="text-base font-semibold">Waivers</h2><ul className="space-y-1 text-sm">{booking.waivers.map((w: any) => <li key={w.participantId}><Link className="underline" href={`/waiver/${w.token}`}>Sign for {w.fullName}</Link></li>)}</ul></div>}
-          {booking.status === 'confirmed' && booking.manageToken && <p className="border-t pt-3 text-sm"><Link className="underline" href={`/manage#${booking.bookingRef}.${booking.manageToken}`}>Change the date or cancel under the policy</Link></p>}
+          {booking.status === 'confirmed' && booking.manageToken && <p className="border-t pt-3 text-sm"><Link className="inline-flex min-h-11 items-center underline" href={`/manage#${booking.bookingRef}.${booking.manageToken}`}>Change the date or cancel under the policy</Link></p>}
           {booking.status === 'confirmed' && <div className="space-y-2 border-t pt-3"><p className="text-sm">Refund if cancelled now: <span className="font-mono">{money(booking.refundIfCancelledCents, booking.currencyCode)}</span></p><Button className="h-11" variant="outline" onClick={cancel}>Cancel booking</Button></div>}
         </section>
       )}

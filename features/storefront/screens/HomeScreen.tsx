@@ -10,9 +10,9 @@ export async function HomeScreen() {
         const from = Math.min(...t.ticketTypes.map((x: any) => x.priceCents))
         return (
           <li key={t.id} className="rounded-xl border p-4">
-            <h2 className="text-lg font-semibold"><Link href={`/tours/${t.slug}`}>{t.name}</Link></h2>
+            <h2 className="text-lg font-semibold"><Link className="flex min-h-11 items-center" href={`/tours/${t.slug}`}>{t.name}</Link></h2>
             <p className="mt-1 text-sm text-muted-foreground">{t.description}</p>
-            <p className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm"><span>{hoursText(t.durationMinutes)} · from {money(from)}</span><Link href={`/tours/${t.slug}`} className="rounded-md border px-3 py-1.5">Choose a date</Link></p>
+            <p className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm"><span>{hoursText(t.durationMinutes)} · from {money(from)}</span><Link href={`/tours/${t.slug}`} className="flex min-h-11 items-center rounded-md border px-3">Choose a date</Link></p>
           </li>
         )
       })}

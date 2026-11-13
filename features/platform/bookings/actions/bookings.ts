@@ -52,6 +52,10 @@ export async function moveBookingAction(bookingId: string, departureId: string, 
   revalidatePath('/dashboard/platform/bookings')
   return result.success ? { success: true as const, startAt: String((result.data as any)?.moveBooking?.startAt || '') } : result
 }
+export async function getCanRefund() {
+  const data = await platformQuery<{ authenticatedItem: { role: { canIssueRefunds: boolean | null } | null } | null }>(`query{ authenticatedItem { ... on User { role { canIssueRefunds } } } }`)
+  return data?.authenticatedItem?.role?.canIssueRefunds === true
+}
 export async function getRefundThreshold() {
   const data = await platformQuery<{ storeSettingsItems: { refundApprovalThresholdCents: number | null }[] }>(`query{ storeSettingsItems(take:1){ refundApprovalThresholdCents } }`)
   return data?.storeSettingsItems?.[0]?.refundApprovalThresholdCents ?? 10000

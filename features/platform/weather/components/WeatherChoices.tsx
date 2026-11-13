@@ -12,7 +12,7 @@ const field = 'h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm'
 
 // One row per guest still waiting for a choice. Rebook moves them to another departure of the same tour at the price they paid.
 // Full refund uses the normal refund path, so a refund over the threshold files an approval request and waits for a second manager.
-export function WeatherChoices({ departures, thresholdCents }: { departures: any[]; thresholdCents: number }) {
+export function WeatherChoices({ departures, thresholdCents, canRefund }: { departures: any[]; thresholdCents: number; canRefund: boolean }) {
   const router = useRouter()
   const [busy, setBusy] = React.useState<string | null>(null)
   const [pick, setPick] = React.useState<Record<string, string>>({})
@@ -59,7 +59,7 @@ export function WeatherChoices({ departures, thresholdCents }: { departures: any
                     </select>
                   ) : <p className="text-muted-foreground">Reseller booking: refund, or re-plan with the reseller.</p>}
                   {b.canRebook && <Button size="sm" disabled={busy === b.id || !pick[b.id]} onClick={() => rebook(b)}>Rebook</Button>}
-                  <Button size="sm" variant="outline" disabled={busy === b.id} onClick={() => refund(b, d)}>Full refund</Button>
+                  {canRefund && <Button size="sm" variant="outline" disabled={busy === b.id} onClick={() => refund(b, d)}>Full refund</Button>}
                 </div>
               </li>
             ))}
