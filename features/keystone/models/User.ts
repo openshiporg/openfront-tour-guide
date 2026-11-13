@@ -79,9 +79,9 @@ export const User = list({
       },
     }),
     onboardingStatus: select({ options: ['not_started', 'in_progress', 'completed', 'dismissed'], defaultValue: 'not_started' }),
-    bookings: relationship({ ref: 'Booking.customer', many: true }),
-    guide: relationship({ ref: 'Guide.user' }),
-    auditEvents: relationship({ ref: 'AuditEvent.actor', many: true }),
+    bookings: relationship({ ref: 'Booking.customer', many: true, isFilterable: permissions.canManageBookings }),
+    guide: relationship({ ref: 'Guide.user', isFilterable: permissions.canManageGuides }),
+    auditEvents: relationship({ ref: 'AuditEvent.actor', many: true, isFilterable: permissions.canReadAudit }),
     ...trackingFields,
   },
 });

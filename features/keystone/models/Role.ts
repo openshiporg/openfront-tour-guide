@@ -29,6 +29,7 @@ export const Role = list({
     assignedTo: relationship({
       ref: 'User.role',
       many: true,
+      isFilterable: permissions.canSeeOtherPeople,
       ui: {
         itemView: { fieldMode: 'read' },
       },

@@ -10,6 +10,7 @@ export const state = (values: string[], initial = values[0]) => select({ type: '
 export const rel = (ref: string, many = false) => relationship({ ref, many });
 export const domainList = (capability: keyof typeof permissions, fields: Record<string, any>, commandOnly = false, hooks?: any) => list({
   access: { operation: { query: permissions[capability], create: commandOnly ? () => false : permissions[capability], update: commandOnly ? () => false : permissions[capability], delete: () => false } },
+  ...(commandOnly ? { ui: { hideCreate: true } } : {}),
   fields: { ...fields, ...trackingFields },
   ...(hooks ? { hooks } : {}),
 });
