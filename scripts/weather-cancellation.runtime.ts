@@ -84,7 +84,7 @@ async function main() {
   const big = { bookingId: bigB.id, amountCents: 15000, reason: 'Weather cancellation: Gale warning', cancelBooking: true };
   await assert.rejects(() => refundBooking(null, { input: big, idempotencyKey: key() }, ca), /over the approval threshold/);
   const req = await requestRefundApproval(null, { bookingId: bigB.id, reason: big.reason, amount: 15000 }, ca);
-  await assert.rejects(() => approveRefund(null, { approvalId: req.id }, ca), /cannot approve their own/);
+  await assert.rejects(() => approveRefund(null, { approvalId: req.id }, ca), /cannot approve your own/);
   await approveRefund(null, { approvalId: req.id }, cb);
   await refundBooking(null, { input: big, idempotencyKey: key() }, ca);
   assert.equal((await p.booking.findUnique({ where: { id: bigB.id } })).status, 'refunded');

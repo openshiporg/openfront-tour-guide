@@ -25,7 +25,7 @@ async function main() {
   await assert.rejects(() => requestRefundApproval(null, { bookingId: booking.id, reason: 'x', amount: 99999999 }, ca), /unrefunded balance/);
   // 3. Still pending: refund refused. Requester cannot approve their own request.
   await assert.rejects(() => refundBooking(null, { input, idempotencyKey: key() }, ca), /over the approval threshold/);
-  await assert.rejects(() => approveRefund(null, { approvalId: r1.id }, ca), /cannot approve their own/);
+  await assert.rejects(() => approveRefund(null, { approvalId: r1.id }, ca), /cannot approve your own/);
   // 4. Second manager approves; a different amount or reason still finds no approval.
   assert.equal((await approveRefund(null, { approvalId: r1.id }, cb)).status, 'approved');
   await assert.rejects(() => refundBooking(null, { input: { ...input, amountCents: 15001 }, idempotencyKey: key() }, ca), /over the approval threshold/);
