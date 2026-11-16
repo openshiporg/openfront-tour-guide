@@ -3,6 +3,18 @@ import { ArrowRight, CalendarDays, Clock, Search, ShieldCheck, Plane, Users } fr
 import { getOperatorName, getTours } from '../lib/data'
 import { money, hoursText } from '../lib/format'
 
+function destinations(tours: any[]) {
+  const m = new Map<string, { name: string; address: string; count: number; src: string | null }>()
+  for (const t of tours) {
+    const mp = t.meetingPoint
+    if (!mp?.name) continue
+    const e = m.get(mp.name) || { name: mp.name, address: mp.address || '', count: 0, src: null }
+    e.count++; e.src ||= photo(t)
+    m.set(mp.name, e)
+  }
+  return [...m.values()].slice(0, 4)
+}
+
 const card = 'rounded-3xl bg-[#f6f6f4] p-5 sm:p-6'
 const eyebrow = 'text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f4a2f]'
 
@@ -16,12 +28,10 @@ export async function HomeScreen() {
   return (
     <div className="space-y-3">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#cfe6f3] via-[#e8f2f2] to-[#f6f6f4] px-6 py-10 sm:px-10 sm:py-14">
-        <svg aria-hidden viewBox="0 0 800 300" preserveAspectRatio="xMaxYMax slice" className="absolute inset-0 h-full w-full">
-          <path d="M300 300 L480 90 L540 140 L620 40 L800 230 L800 300Z" fill="#7fa7c4" opacity=".55" />
-          <path d="M420 300 L600 150 L700 210 L800 120 L800 300Z" fill="#2f6b4a" opacity=".85" />
-          <path d="M560 300 L700 220 L800 250 L800 300Z" fill="#0f4a2f" />
-        </svg>
-        <div className="relative max-w-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/hero.jpg" alt="" className="absolute inset-0 size-full object-cover object-right" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/30 to-transparent" />
+        <div className="relative min-h-52 max-w-sm sm:min-h-72">
           <p className={eyebrow}>Guided tours</p>
           <h1 className="mt-3 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Discover Extraordinary Places</h1>
           <p className="mt-4 text-sm">Curated tours, expert guides, and unforgettable travel experiences with {name}.</p>
@@ -58,6 +68,23 @@ export async function HomeScreen() {
           {!tours.length && <li className="text-sm text-[#0b2e1f]/60">No tours on sale.</li>}
         </ul>
       </section>
+
+      {destinations(tours).length > 0 && (
+        <section className={card}>
+          <p className={eyebrow}>Where we start</p>
+          <h2 className="mt-1 text-2xl font-extrabold tracking-tight">Find Your Next Adventure</h2>
+          <ul className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {destinations(tours).map((d, n) => (
+              <li key={d.name} className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-gradient-to-br from-[#1f5d7a] to-[#2f6b4a]" style={{ filter: `hue-rotate(${n * 30}deg)` }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {d.src && <img src={d.src} alt="" className="absolute inset-0 size-full object-cover" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute bottom-3 left-3 right-3 text-white"><p className="font-bold leading-tight">{d.name}</p><p className="text-xs opacity-80">{d.count} tour{d.count === 1 ? '' : 's'}</p></div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className={card}>
         <p className={eyebrow}>How it works</p>

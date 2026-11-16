@@ -6,5 +6,5 @@ export async function ConfirmationScreen({ params, searchParams }: { params: Pro
   const { ref } = await params
   const { email } = await searchParams
   if (!(await bookingRefExists(ref))) notFound()
-  return <BookingView bookingRef={ref} initialEmail={email || ''} />
+  return <div className="rounded-3xl bg-[#f6f6f4] p-5 sm:p-8"><BookingView bookingRef={ref} initialEmail={email || ''} /></div>
 }
