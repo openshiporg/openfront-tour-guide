@@ -27,11 +27,11 @@ export async function HomeScreen() {
   const [tours, name] = await Promise.all([getTours(), getOperatorName()])
   return (
     <div className="space-y-3">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#cfe6f3] via-[#e8f2f2] to-[#f6f6f4] px-6 py-10 sm:px-10 sm:py-14">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#cfe6f3] via-[#e8f2f2] to-[#f6f6f4] px-6 pb-64 pt-10 sm:px-10 sm:py-14">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/hero.jpg" alt="" className="absolute inset-0 size-full object-cover object-right" />
-        <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/30 to-transparent" />
-        <div className="relative min-h-52 max-w-sm sm:min-h-72">
+        <img src="/hero.jpg" alt="" className="absolute inset-x-0 bottom-0 h-56 w-full object-cover object-[80%_50%] sm:inset-0 sm:h-full sm:object-right" />
+        <div className="absolute inset-0 hidden bg-gradient-to-r from-white/80 via-white/30 to-transparent sm:block" />
+        <div className="relative max-w-sm sm:min-h-72">
           <p className={eyebrow}>Guided tours</p>
           <h1 className="mt-3 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Discover Extraordinary Places</h1>
           <p className="mt-4 text-sm">Curated tours, expert guides, and unforgettable travel experiences with {name}.</p>
@@ -49,7 +49,7 @@ export async function HomeScreen() {
         <p className={eyebrow}>Popular tours</p>
         <h2 className="mt-1 text-2xl font-extrabold tracking-tight">Our Most Loved Trips</h2>
         <ul className="mt-5 grid gap-5 sm:grid-cols-3">
-          {tours.map((t, n) => {
+          {tours.slice(0, 3).map((t, n) => {
             const from = Math.min(...t.ticketTypes.map((x: any) => x.priceCents))
             const src = photo(t)
             return (
