@@ -304,7 +304,10 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
     if (!settled) await audit(tx, a.actorId, 'refund.unresolved', 'Refund', legs[0].id, null, { legs: legs.map((l: any) => ({ id: l.id, status: outcomes.get(l.id)?.status || l.status })) }, 'Reconcile with the provider before retrying', a.key);
     else if (a.tenderOnly) { if (newlySettled) await audit(tx, a.actorId, 'refund.settled', 'Booking', b.id, null, { amount: total, legs: legs.length }, a.reason, a.key); }
     else if (!legs.length || newlySettled) {
-      const refunded = (b.refundedCents || 0) + total;
+      // A reseller that collected the money holds no payment here: the refund is the reseller's to return, so the amount is credited
+      // to the booking (refundedCents) and leaves the reseller statement, instead of the reseller being billed for a cancelled booking.
+      const channelCredit = !legs.length && b.channelId ? Math.min(Math.max(a.amount, 0), b.totalCents - (b.refundedCents || 0)) : 0;
+      const refunded = (b.refundedCents || 0) + total + channelCredit;
       const data: any = { refundedCents: refunded };
       if (a.cancel) { data.status = refunded >= b.totalCents && b.totalCents > 0 ? 'refunded' : 'cancelled'; data.seats = 0; if (b.totalCents === 0) data.status = 'cancelled'; }
       // A partial refund is money only (refundedCents): the booking keeps its operational status, so its seats stay counted and the guest can still check in or cancel.
