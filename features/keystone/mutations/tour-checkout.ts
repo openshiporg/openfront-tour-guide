@@ -322,6 +322,9 @@ export async function settleRefund(prisma: any, a: RefundArgs, reservation: { le
     return summary(legs.length ? await tx.refund.findMany({ where: { id: { in: legs.map((l: any) => l.id) } }, orderBy: { createdAt: 'asc' } }) : []);
   }, { timeout: 20000 });
 }
+const refundNotDone = (status: string) => status === 'failed'
+  ? 'The card processor refused this refund. Nothing was refunded and the booking is unchanged.'
+  : 'The card processor has not confirmed this refund yet. The booking is unchanged; press again to retry the same refund.';
 export async function cancelMyBooking(_r: any, args: any, context: any) {
   const booking = await context.prisma.booking.findUnique({ where: { bookingRef: String(args.bookingRef || '').trim().toUpperCase() }, include: { departure: true } });
   if (!booking || norm(booking.guestEmail) !== norm(args.email)) throw userFacingError(new Error('Booking not found'));
@@ -343,7 +346,9 @@ export async function cancelMyBooking(_r: any, args: any, context: any) {
   if (booking.departure.startAt.getTime() - (booking.departure.bookingCutoffMinutes ?? 0) * 60000 <= Date.now()) throw userFacingError(new Error('Online cancellation closed before the start. Contact the operator.'));
   const refundable = booking.totalCents - booking.refundedCents;
   const amount = refundPolicyAmount(refundable, booking.policySnapshot?.rules || [], (booking.departure.startAt.getTime() - Date.now()) / 3600000);
-  await issueRefund(context.prisma, { bookingId: booking.id, amount, reason: 'Guest cancellation per policy', key: `cancel:${booking.id}:${args.idempotencyKey}`, actorId: null, cancel: true });
+  // One key per booking: pressing Cancel again after a card-processor error retries the same refund instead of starting a second one.
+  const result: any = await issueRefund(context.prisma, { bookingId: booking.id, amount, reason: 'Guest cancellation per policy', key: `cancel:${booking.id}`, actorId: null, cancel: true });
+  if (result.status !== 'succeeded') throw userFacingError(new Error(refundNotDone(result.status)));
   return bookingView(context.prisma, booking);
 }
 // Whether a booking reference exists at all (no guest details), so an unknown /bookings/<ref> can be a real 404.
@@ -361,6 +366,15 @@ async function refundBookingInner(_r: any, args: any, context: any) {
   if (!booking || !LIVE.includes(booking.status)) throw new Error('Booking cannot be refunded');
   const settings = await context.prisma.storeSettings.findFirst();
   if (!i.reason?.trim()) throw new Error('Reason required');
+  // A refund the card processor didn't confirm is retried with its own key, never replaced by a second one.
+  const unsettled = await context.prisma.refund.findFirst({ where: { orderId: booking.id, status: { in: ['processing', 'unknown'] }, idempotencyKey: { startsWith: 'refund:' } }, orderBy: { createdAt: 'asc' }, select: { idempotencyKey: true } });
+  if (unsettled) {
+    const key = unsettled.idempotencyKey.replace(/~\d+$/, '');
+    const legs = await context.prisma.refund.findMany({ where: { orderId: booking.id, ...legWhere(key) }, orderBy: { createdAt: 'asc' } });
+    const retried: any = await settleRefund(context.prisma, { bookingId: booking.id, amount: 0, reason: i.reason, key, actorId: user.id, cancel: !!i.cancelBooking }, { legs, replay: true });
+    if (retried.status !== 'succeeded') throw new Error(refundNotDone(retried.status));
+    throw new Error(`An earlier refund of ${(retried.amount / 100).toFixed(2)} on this booking was still unconfirmed; it has now gone through. Check the booking before refunding again.`);
+  }
   const priorLegs = await context.prisma.refund.findMany({ where: { orderId: booking.id, ...legWhere(`refund:${args.idempotencyKey}`) }, select: { amount: true } });
   const refusal = refundRequestRefusal(i.amountCents, !!i.cancelBooking, priorLegs);
   if (refusal) throw new Error(refusal);
@@ -373,7 +387,8 @@ async function refundBookingInner(_r: any, args: any, context: any) {
     approvalId = match?.id;
     if (!approvalId) throw new Error('This refund is over the approval threshold. Request approval first: another manager must approve this exact amount and reason.');
   }
-  await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
+  const result: any = await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
+  if (result.status !== 'succeeded') throw new Error(refundNotDone(result.status));
   const refund = await context.prisma.refund.findUnique({ where: { idempotencyKey: `refund:${args.idempotencyKey}` } });
   return { bookingRef: booking.bookingRef, refundId: refund?.id || null };
 }
