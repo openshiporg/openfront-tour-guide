@@ -70,9 +70,9 @@ export function TodayClient({ departures }: { departures: any[] }) {
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline" disabled={busy === d.id}>Cancel departure</Button></PopoverTrigger>
                   <PopoverContent className="w-64 space-y-2">
-                    <p className="text-sm">Operator cancel refunds every booking under its policy. Weather cancel notifies each guest and lets you rebook or fully refund them on the Weather page.</p>
+                    <p className="text-sm">Operator cancel refunds every booking under its policy. Weather cancel lets you rebook or fully refund each guest on the Weather page. Guests are not notified: contact them yourself.</p>
                     <Input aria-label="Weather reason" placeholder="Weather reason (required)" value={weatherReason[d.id] || ''} onChange={(e) => setWeatherReason({ ...weatherReason, [d.id]: e.target.value })} />
-                    <Button size="sm" className="w-full" disabled={(weatherReason[d.id] || '').trim().length < 3} onClick={() => run(d.id, () => weatherCancelAction(d.id, weatherReason[d.id].trim()), 'Could not weather-cancel', 'Weather cancelled: guests notified, choose rebook or refund on the Weather page')}>Weather cancel</Button>
+                    <Button size="sm" className="w-full" disabled={(weatherReason[d.id] || '').trim().length < 3} onClick={() => run(d.id, () => weatherCancelAction(d.id, weatherReason[d.id].trim()), 'Could not weather-cancel', 'Weather cancelled: contact each guest, then rebook or refund on the Weather page')}>Weather cancel</Button>
                     <Button size="sm" variant="outline" className="w-full" onClick={() => cancel(d.id, 'operator')}>Operator cancel</Button>
                   </PopoverContent>
                 </Popover>
