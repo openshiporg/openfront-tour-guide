@@ -1,4 +1,5 @@
 import { authorize, command, audit, lockTransactionKey } from '../lib/tour-command';
+import { settlement } from '../lib/tour-money';
 
 export function validatePayout(payout: any) {
   if (!payout.assignments.length || payout.assignments.some((a: any) => a.status !== 'worked' || a.guideId !== payout.guideId || a.currencyCode !== payout.currencyCode)) throw new Error('Payout requires worked assignments for the same guide and currency');
@@ -38,9 +39,19 @@ export async function transitionChannelStatement(_r: any, args: any, context: an
     const statement = await tx.channelStatement.findUnique({ where: { id: i.id }, include: { bookings: true } });
     if (!statement) throw new Error('Statement not found');
     settlementTransition('statement', statement.status, i.status, i.reference);
-    // Refuse stale statements after refunds rather than attest an obsolete balance.
     const gross = statement.bookings.reduce((n: number, b: any) => n + b.totalCents - b.refundedCents, 0);
-    if (!statement.bookings.length || gross !== statement.grossCents) throw new Error('Statement has no bookings or changed refunds; reconcile before settlement');
+    if (!statement.bookings.length) throw new Error('Statement has no bookings');
+    // A refund after generation: an open statement is recalculated (same rule as generation) before it is invoiced.
+    // Once invoiced, the amount sent is fixed and a changed balance is refused rather than attested.
+    if (gross !== statement.grossCents && statement.status === 'open') {
+      const channel = await tx.channel.findUnique({ where: { id: statement.channelId } });
+      const commissionCents = statement.bookings.reduce((n: number, b: any) => n + settlement(b.totalCents - b.refundedCents, b.totalCents ? Math.round(b.channelCommissionCents * 10000 / b.totalCents) : 0).commissionCents, 0);
+      const netDueCents = channel?.paymentModel === 'channel_collects' ? gross - commissionCents : -commissionCents;
+      await tx.channelStatement.update({ where: { id: statement.id }, data: { grossCents: gross, commissionCents, netDueCents } });
+      await audit(tx, context.session.itemId, 'channel.statement_recalculated', 'ChannelStatement', statement.id, { grossCents: statement.grossCents, commissionCents: statement.commissionCents, netDueCents: statement.netDueCents }, { grossCents: gross, commissionCents, netDueCents }, 'Refunds after generation', args.idempotencyKey);
+      statement.grossCents = gross; statement.netDueCents = netDueCents;
+    }
+    if (gross !== statement.grossCents) throw new Error('Refunds changed this invoiced statement; reconcile before settlement');
     const result = await tx.channelStatement.updateMany({ where: { id: statement.id, status: statement.status }, data: { status: i.status } });
     if (result.count !== 1) throw new Error('Statement changed concurrently');
     await audit(tx, context.session.itemId, 'channel.statement_' + i.status, 'ChannelStatement', statement.id, { status: statement.status }, { status: i.status, netDueCents: statement.netDueCents, currencyCode: statement.currencyCode, reference: i.reference?.trim() || '', recordedAt: new Date().toISOString() }, i.reference?.trim() || '', args.idempotencyKey);
