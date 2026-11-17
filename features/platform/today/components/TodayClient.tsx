@@ -53,7 +53,7 @@ export function TodayClient({ departures }: { departures: any[] }) {
             {alerts.length > 0 && <p className="mt-2 text-sm text-amber-700">{alerts.join(' · ')}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline"><Link href={`/dashboard/platform/check-in?departure=${d.id}`}>Manifest</Link></Button>
-              {['closed', 'in_progress'].includes(d.status) && new Date(d.endAt).getTime() <= Date.now() && (
+              {['on_sale', 'confirmed', 'full', 'closed', 'in_progress'].includes(d.status) && new Date(d.endAt).getTime() <= Date.now() && (
                 <Button size="sm" disabled={busy === d.id} onClick={() => run(d.id, () => completeDepartureAction(d.id), 'Could not complete', 'Departure completed')}>Complete departure</Button>
               )}
               {!['cancelled', 'weather_cancelled', 'completed'].includes(d.status) && (
