@@ -182,7 +182,15 @@ async function dropUnpaid(db: any, bookingId: string, requestKey: string) {
   if (open.paymentIntentId) {
     const prov = await provider(db);
     const r: any = await cancelPayment({ provider: prov, paymentId: open.paymentIntentId, idempotencyKey: `party-change-cancel:${open.id}` });
-    if (r?.status === 'succeeded') throw new Error('A change is waiting for payment. Finish it or let it lapse first');
+    // Already paid (the guest closed the tab after paying): finish that change first, then this request prices against the result.
+    if (r?.status === 'succeeded') {
+      await finishPartyChange(db, await bookingFor(db, bookingId), open, open.id).catch(() => null);
+      // Still unapplied (not a seats-gone refund): never drop a paid change.
+      const now = (await db.partyChange.findUnique({ where: { id: open.id } }))?.status;
+      if (now === 'pending_payment') throw new Error('A change is waiting for payment. Finish it or let it lapse first');
+      // The new request was priced against the party before that change: the guest reviews the updated booking first.
+      throw new Error(now === 'applied' ? 'Your earlier paid change has now been applied. Reload to see your updated booking, then make any further change' : 'Your earlier change could not be made and its payment was refunded. Reload to see your booking');
+    }
   }
   await db.$transaction(async (tx: any) => {
     const b = await tx.booking.findUnique({ where: { id: bookingId }, select: { departureId: true } });
@@ -215,6 +223,11 @@ export async function completePartyChange(_r: any, args: any, context: any) {
     const db = context.prisma, b0 = await load(db, args);
     const change = await db.partyChange.findUnique({ where: { id: String(args.changeId || '') } });
     if (!change || change.bookingId !== b0.id) throw new Error('Change not found');
+    return await finishPartyChange(db, b0, change, args.idempotencyKey || change.id);
+  } catch (e) { throw userFacingError(e); }
+}
+// Also called by the payment webhook, so a change paid in a tab that closed before completePartyChange still applies.
+export async function finishPartyChange(db: any, b0: any, change: any, requestId: string) {
     if (change.status === 'applied') return { changeId: change.id, status: 'applied', bookingRef: b0.bookingRef };
     if (change.status !== 'pending_payment') throw new Error(change.status === 'failed' ? 'This change could not be made and its payment was refunded' : 'This change was cancelled');
     if (!change.paymentIntentId) throw new Error('Payment has not started');
@@ -244,19 +257,18 @@ export async function completePartyChange(_r: any, args: any, context: any) {
         failed = true;
         await tx.partyChange.update({ where: { id: c.id }, data: { status: 'failed' } });
         if (hold?.status === 'active') await tx.inventoryHold.update({ where: { id: hold.id }, data: { status: 'released' } });
-        await audit(tx, null, 'party_change.failed', 'PartyChange', c.id, { status: c.status }, { status: 'failed' }, 'Seats or booking changed before payment completed; payment refunded', args.idempotencyKey || c.id);
+        await audit(tx, null, 'party_change.failed', 'PartyChange', c.id, { status: c.status }, { status: 'failed' }, 'Seats or booking changed before payment completed; payment refunded', requestId);
         return;
       }
       if (hold) await tx.inventoryHold.update({ where: { id: hold.id }, data: { status: 'converted' } });
       await tx.partyChange.update({ where: { id: c.id }, data: { status: 'applied' } });
-      await applyPlan(tx, b, P, null, 'booking.party_changed', `${c.reason}: difference paid by card`, args.idempotencyKey || c.id);
+      await applyPlan(tx, b, P, null, 'booking.party_changed', `${c.reason}: difference paid by card`, requestId);
     }, { timeout: 20000 });
     if (failed) {
       await issueRefund(db, { bookingId: b0.id, amount: change.collectCents, reason: 'Party change could not be made after payment', key: `party-change-failed:${change.id}`, actorId: null, tenderOnly: true });
       throw new Error('The seats were taken before your payment went through. Your payment for the change was refunded and your booking is as it was');
     }
     return { changeId: change.id, status: 'applied', bookingRef: b0.bookingRef };
-  } catch (e) { throw userFacingError(e); }
 }
 
 // ---------- staff (dashboard) ----------

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { keystoneContext } from '@/features/keystone/context'
 import { handleWebhook } from '@/features/keystone/utils/paymentProviderAdapter'
 import { finalizeBookingPayment } from '@/features/keystone/mutations/tour-checkout'
+import { finishPartyChange } from '@/features/keystone/mutations/tour-party-change'
 
 // Provider webhooks confirm bookings even when the guest closes the tab after paying.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
@@ -25,8 +26,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const intentId = parsed.resource?.id
       const session = intentId && await prisma.paymentSession.findFirst({ where: { paymentProviderId: provider.id, data: { path: ['paymentIntentId'], equals: intentId } }, include: { paymentCollection: { include: { booking: true } } } })
       const booking = session?.paymentCollection?.booking
-      if (!booking) throw new Error('Payment correlation pending')
-      await finalizeBookingPayment(prisma, booking.id, null, `webhook:${eventKey}`)
+      // A party change's difference is a second PaymentIntent on the booking, recorded on the change itself.
+      const change = !booking && intentId ? await prisma.partyChange.findFirst({ where: { paymentIntentId: intentId } }) : null
+      if (change) {
+        const changed = await prisma.booking.findUnique({ where: { id: change.bookingId } })
+        // A change that can't apply (seats gone) is refunded inside finishPartyChange; that is a handled outcome, not a retry.
+        await finishPartyChange(prisma, changed, change, `webhook:${eventKey}`).catch((error: any) => { if (/could not be made|seats were taken|was cancelled/i.test(String(error?.message))) return null; throw error })
+      } else {
+        if (!booking) throw new Error('Payment correlation pending')
+        await finalizeBookingPayment(prisma, booking.id, null, `webhook:${eventKey}`)
+      }
     }
     await prisma.paymentWebhookEvent.update({ where: { eventKey }, data: { status: parsed.type === 'payment_intent.succeeded' ? 'processed' : 'ignored', processedAt: new Date(), attempts: { increment: 1 } } })
     return NextResponse.json({ received: true })
