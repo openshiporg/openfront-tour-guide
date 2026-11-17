@@ -5,6 +5,7 @@ import { getDepartures } from '../../today/actions/today'
 import { zonedStart } from '@/features/keystone/lib/tour-schedule'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, dayKey, timeIn } from '../../lib/format'
+import { GenerateDepartures } from '../components/GenerateDepartures'
 
 export async function CalendarPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const { week } = await searchParams
@@ -18,10 +19,11 @@ export async function CalendarPage({ searchParams }: { searchParams: Promise<{ w
   return (
     <PageContainer title="Calendar" breadcrumbs={[{ type: 'link', label: 'Dashboard', href: '/dashboard' }, { type: 'page', label: 'Calendar' }]}>
       <div className="space-y-3 p-4">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button asChild size="sm" variant="outline"><Link href={nav(offset - 1)}>Previous</Link></Button>
           <Button asChild size="sm" variant="outline"><Link href={nav(0)}>This week</Link></Button>
           <Button asChild size="sm" variant="outline"><Link href={nav(offset + 1)}>Next</Link></Button>
+          <GenerateDepartures />
         </div>
         <div className="grid gap-3 md:grid-cols-7">
           {days.map((day) => {

@@ -22,3 +22,8 @@ export async function cancelDepartureAction(departureId: string, reason: string)
   revalidatePath('/dashboard/platform/today')
   return result
 }
+export async function generateDeparturesAction() {
+  const result = await platformMutation(`mutation($input:GenerateDeparturesInput,$idempotencyKey:String!){ generateDepartures(input:$input,idempotencyKey:$idempotencyKey) }`, { input: { days: 60 } })
+  revalidatePath('/dashboard/platform/calendar'); revalidatePath('/dashboard/platform/today')
+  return result
+}
