@@ -6,8 +6,10 @@ import { getManifest } from '../actions/checkIn'
 import { ManifestClient } from '../components/ManifestClient'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayKey, timeIn } from '../../lib/format'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 export async function CheckInPage({ searchParams }: { searchParams: Promise<{ departure?: string }> }) {
+  const zone = await loadOperatorZone()
   const { departure } = await searchParams
   const crumbs = [{ type: 'link' as const, label: 'Dashboard', href: '/dashboard' }, { type: 'page' as const, label: 'Check-in' }]
   if (departure) {
@@ -24,7 +26,7 @@ export async function CheckInPage({ searchParams }: { searchParams: Promise<{ de
       </PageContainer>
     )
   }
-  const from = zonedStart(dayKey(new Date()), '00:00', 'America/New_York')
+  const from = zonedStart(dayKey(new Date()), '00:00', zone)
   const rows = await getDepartures(from.toISOString(), new Date(from.getTime() + 26 * 3600000).toISOString())
   return (
     <PageContainer title="Check-in" breadcrumbs={crumbs}>

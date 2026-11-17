@@ -1,11 +1,13 @@
 import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { platformQuery } from '../../lib/gql'
 import { money, dayIn } from '../../lib/format'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 type Row = { guestName: string; guestEmail: string; guestPhone: string; status: string; totalCents: number; refundedCents: number; currencyCode: string; createdAt: string }
 
 // Guests are the people on bookings (they book without an account), so this groups the latest bookings by email.
 export async function CustomersPage() {
+  const zone = await loadOperatorZone()
   const data = await platformQuery<{ bookings: Row[] }>(`query{ bookings(take:500, orderBy:[{createdAt:desc}]){ guestName guestEmail guestPhone status totalCents refundedCents currencyCode createdAt } }`)
   const guests = new Map<string, { name: string; email: string; phone: string; bookings: number; paidCents: number; currency: string; last: string }>()
   for (const b of data?.bookings || []) {

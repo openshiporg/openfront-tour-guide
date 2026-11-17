@@ -3,11 +3,13 @@ import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { dayIn, dayKey, timeIn } from '../../lib/format'
 import { getDayPickupSheet } from '../actions/guideDay'
 import { PrintButton } from '../components/PrintButton'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 const PRINT_CSS = `@media print { [data-slot="sidebar"], [data-slot="sidebar-gap"], [data-sidebar], header, .no-print { display: none !important } [data-slot="sidebar-wrapper"] { display: block !important } .print-sheet { padding: 0 !important; color: #000 } .print-sheet li { break-inside: avoid } .print-departure { break-after: page } .print-departure:last-child { break-after: auto } }`
 const shift = (day: string, by: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + by); return d.toISOString().slice(0, 10) }
 
 export async function DayPickupPage({ searchParams }: { searchParams: Promise<{ day?: string }> }) {
+  const zone = await loadOperatorZone()
   const { day: asked } = await searchParams
   const day = /^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? (asked as string) : dayKey(new Date())
   const sheet = await getDayPickupSheet(day)

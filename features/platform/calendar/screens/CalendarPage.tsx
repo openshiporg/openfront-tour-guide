@@ -6,14 +6,16 @@ import { zonedStart } from '@/features/keystone/lib/tour-schedule'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, dayKey, timeIn } from '../../lib/format'
 import { GenerateDepartures } from '../components/GenerateDepartures'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 export async function CalendarPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
+  const zone = await loadOperatorZone()
   const { week } = await searchParams
   const offset = Number.isInteger(Number(week)) ? Math.max(-8, Math.min(12, Number(week))) : 0
   const base = new Date(Date.now() + offset * 7 * 86400000)
   const days = Array.from({ length: 7 }, (_, i) => new Date(base.getTime() + i * 86400000))
-  const from = zonedStart(dayKey(days[0]), '00:00', 'America/New_York')
-  const to = zonedStart(dayKey(new Date(days[6].getTime() + 26 * 3600000)), '00:00', 'America/New_York')
+  const from = zonedStart(dayKey(days[0]), '00:00', zone)
+  const to = zonedStart(dayKey(new Date(days[6].getTime() + 26 * 3600000)), '00:00', zone)
   const departures = await getDepartures(from.toISOString(), to.toISOString())
   const nav = (n: number) => `/dashboard/platform/calendar?week=${n}`
   return (

@@ -6,8 +6,10 @@ import { getBookingOptions } from '../../bookings/actions/bookings'
 import { GuideAssignments } from '../components/GuideAssignments'
 import { getSettlements } from '../../channels/actions/settlement'
 import { SettlementRows } from '../../channels/components/SettlementActions'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 export async function GuidesPage() {
+  const zone = await loadOperatorZone()
   const [guides, { departures }, settlements] = await Promise.all([getGuides(), getBookingOptions(), getSettlements()])
   const soon = Date.now() + 30 * 86400000
   return (
@@ -22,7 +24,7 @@ export async function GuidesPage() {
               {g.certifications.map((c: any) => {
                 const at = c.expiresAt ? new Date(c.expiresAt).getTime() : null
                 const expired = at !== null && at < Date.now(), expiring = at !== null && !expired && at < soon
-                return <li key={c.id} className="text-sm">{c.name} <span className={`font-mono text-xs uppercase tracking-wide ${expired ? 'text-rose-700' : expiring ? 'text-amber-700' : 'text-muted-foreground'}`}>{at === null ? 'no expiry' : `${expired ? 'expired' : expiring ? 'expires soon' : 'valid until'} ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(at))}`}</span></li>
+                return <li key={c.id} className="text-sm">{c.name} <span className={`font-mono text-xs uppercase tracking-wide ${expired ? 'text-rose-700' : expiring ? 'text-amber-700' : 'text-muted-foreground'}`}>{at === null ? 'no expiry' : `${expired ? 'expired' : expiring ? 'expires soon' : 'valid until'} ${new Intl.DateTimeFormat('en-US', { timeZone: zone, month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(at))}`}</span></li>
               })}
             </ul>
             {g.assignments.length > 0 && <ul className="mt-2 space-y-1 border-t pt-2">{g.assignments.map((a: any) => <li key={a.id} className="flex items-center justify-between gap-2 text-sm"><span className="truncate">{a.departure?.tour?.name} · {dayIn(a.departure.startAt)} {timeIn(a.departure.startAt)}</span><StatusLabel status={a.status} /></li>)}</ul>}

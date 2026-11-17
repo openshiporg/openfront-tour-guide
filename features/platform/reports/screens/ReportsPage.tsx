@@ -3,6 +3,7 @@ import { money } from '../../lib/format'
 import { dayIn, timeIn } from '../../lib/format'
 import { getSalesReport, type Group, type Occ, type Totals, type Week } from '../actions/reports'
 import { ExportCsv } from '../components/ExportCsv'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const field = 'h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm'
@@ -70,6 +71,7 @@ function Groups({ title, groups }: { title: string; groups: Group[] }) {
 }
 
 export async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const zone = await loadOperatorZone()
   const sp = await searchParams
   const today = new Date(), back = new Date(today.getTime() - 29 * 86400000)
   const from = DAY.test(one(sp.from)) ? one(sp.from) : iso(back), to = DAY.test(one(sp.to)) ? one(sp.to) : iso(today)

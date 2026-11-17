@@ -3,8 +3,10 @@ import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { StatusLabel } from '../../components/StatusLabel'
 import { dayIn, timeIn } from '../../lib/format'
 import { getMyDepartures } from '../actions/guideDay'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 export async function MyDeparturesPage() {
+  const zone = await loadOperatorZone()
   const data = await getMyDepartures(14)
   const crumbs = [{ type: 'link' as const, label: 'Dashboard', href: '/dashboard' }, { type: 'page' as const, label: 'My departures' }]
   const days = new Map<string, NonNullable<typeof data>['departures']>()

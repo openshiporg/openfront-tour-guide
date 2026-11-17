@@ -3,11 +3,13 @@ import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { dayIn, timeIn } from '../../lib/format'
 import { getPickupSheet } from '../actions/guideDay'
 import { PrintButton } from '../components/PrintButton'
+import { loadOperatorZone } from '@/features/platform/lib/operator-zone'
 
 // Print: hide the app chrome (sidebar, header, floating pager and the controls) and leave the sheet in black on white.
 const PRINT_CSS = `@media print { [data-slot="sidebar"], [data-slot="sidebar-gap"], [data-sidebar], header, .no-print { display: none !important } [data-slot="sidebar-wrapper"] { display: block !important } .print-sheet { padding: 0 !important; color: #000 } .print-sheet li { break-inside: avoid } }`
 
 export async function PickupSheetPage({ searchParams }: { searchParams: Promise<{ departure?: string }> }) {
+  const zone = await loadOperatorZone()
   const { departure } = await searchParams
   const sheet = departure ? await getPickupSheet(departure) : null
   const crumbs = [{ type: 'link' as const, label: 'Dashboard', href: '/dashboard' }, { type: 'page' as const, label: 'Pickup sheet' }]
