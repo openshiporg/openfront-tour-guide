@@ -1,5 +1,6 @@
 import { PageContainer } from '@/features/dashboard/components/PageContainer'
 import { TodayClient } from '../components/TodayClient'
+import { DailyCheck } from '../components/DailyCheck'
 import { getDepartures } from '../actions/today'
 import { zonedStart } from '@/features/keystone/lib/tour-schedule'
 import { dayKey } from '../../lib/format'
@@ -12,6 +13,7 @@ export async function TodayPage() {
   const departures = await getDepartures(from.toISOString(), to.toISOString())
   return (
     <PageContainer title="Today" breadcrumbs={[{ type: 'link', label: 'Dashboard', href: '/dashboard' }, { type: 'page', label: 'Today' }]}>
+      <DailyCheck />
       <TodayClient departures={departures} />
     </PageContainer>
   )

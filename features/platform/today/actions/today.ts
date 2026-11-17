@@ -27,3 +27,8 @@ export async function generateDeparturesAction() {
   revalidatePath('/dashboard/platform/calendar'); revalidatePath('/dashboard/platform/today')
   return result
 }
+export async function sweepDeparturesAction() {
+  const result = await platformMutation(`mutation($idempotencyKey:String!){ sweepDepartures(idempotencyKey:$idempotencyKey) }`)
+  revalidatePath('/dashboard/platform/today'); revalidatePath('/dashboard/platform/waitlist')
+  return result
+}
