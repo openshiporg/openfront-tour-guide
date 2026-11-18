@@ -15,7 +15,7 @@ function destinations(tours: any[]) {
   return [...m.values()].slice(0, 4)
 }
 
-const card = 'rounded-3xl bg-[#f6f6f4] p-5 sm:p-6'
+const card = 'p-5 sm:p-6'
 const eyebrow = 'text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f4a2f]'
 
 function photo(t: any): string | null {

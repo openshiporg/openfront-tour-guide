@@ -6,5 +6,5 @@ export async function WaiverScreen({ params }: { params: Promise<{ token: string
   const { token } = await params
   const r = await getWaiver(token)
   if (!r.ok) notFound()
-  return <div className="rounded-3xl bg-[#f6f6f4] p-5 sm:p-8"><WaiverForm token={token} waiver={r.waiver} /></div>
+  return <div className="p-5 sm:p-8"><WaiverForm token={token} waiver={r.waiver} /></div>
 }

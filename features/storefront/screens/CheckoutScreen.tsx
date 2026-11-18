@@ -7,5 +7,5 @@ export async function CheckoutScreen({ params }: { params: Promise<{ holdId: str
   const hold = await getHold(holdId)
   if (!hold) notFound()
   if (hold.bookingRef && hold.status === 'converted') redirect(`/bookings/${hold.bookingRef}`)
-  return <div className="rounded-3xl bg-[#f6f6f4] p-5 sm:p-8"><CheckoutForm holdId={holdId} hold={hold} publishableKey={process.env.NEXT_PUBLIC_STRIPE_KEY || ''} /></div>
+  return <div className="p-5 sm:p-8"><CheckoutForm holdId={holdId} hold={hold} publishableKey={process.env.NEXT_PUBLIC_STRIPE_KEY || ''} /></div>
 }

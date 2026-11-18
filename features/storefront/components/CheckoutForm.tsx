@@ -63,7 +63,7 @@ export function CheckoutForm({ holdId, hold, publishableKey }: { holdId: string;
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-xl font-semibold">{quote.tour.name}</h1><p className="text-sm text-muted-foreground">{when(quote.tour.startAt, quote.tour.timezone)}</p></div><p className="font-mono text-sm">Held {left === null ? '' : hh > 0 ? `${hh}h ${mm}m` : `${mm}:${ss}`}</p></header>
-      <ul className="space-y-1 text-sm">{quote.lines.map((l: any, i: number) => <li key={i} className="flex justify-between gap-2"><span>{l.qty} × {l.name}</span><span className="font-mono">{money(l.unitPriceCents * l.qty, quote.currencyCode)}</span></li>)}
+      <ul className="space-y-1 rounded-xl border border-black/10 p-4 text-sm">{quote.lines.map((l: any, i: number) => <li key={i} className="flex justify-between gap-2"><span>{l.qty} × {l.name}</span><span className="font-mono">{money(l.unitPriceCents * l.qty, quote.currencyCode)}</span></li>)}
         {quote.discountCents > 0 && <li className="flex justify-between"><span>Discount</span><span className="font-mono">−{money(quote.discountCents, quote.currencyCode)}</span></li>}
         {quote.taxCents > 0 && <li className="flex justify-between"><span>Tax</span><span className="font-mono">{money(quote.taxCents, quote.currencyCode)}</span></li>}
         <li className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="font-mono">{money(quote.totalCents, quote.currencyCode)}</span></li>
