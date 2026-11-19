@@ -29,8 +29,8 @@ export function WaitlistEntryView() {
   }, [load])
 
   if (link === undefined) return <p className="text-sm text-muted-foreground">Loading…</p>
-  if (link === null) return <div className="space-y-3"><h1 className="text-xl font-semibold">Your waitlist place</h1><p className="text-sm">This page needs the private link you got when you joined the waitlist. <Link className="underline" href="/">See tours</Link>.</p></div>
-  if (!e) return error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : <p className="text-sm text-muted-foreground">Loading…</p>
+  if (link === null) return <div className="space-y-3"><h1 className="text-2xl font-extrabold tracking-tight">Your waitlist place</h1><p className="text-sm">This page needs the private link you got when you joined the waitlist. <Link className="underline" href="/">See tours</Link>.</p></div>
+  if (!e) return error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : <p className="text-sm text-muted-foreground">Loading…</p>
 
   const book = async () => {
     setBusy(true); setError('')
@@ -43,10 +43,10 @@ export function WaitlistEntryView() {
   const open = e.status === 'waiting' || e.status === 'offered'
   return (
     <div className="space-y-4">
-      <header className="space-y-1"><h1 className="text-xl font-semibold">{e.tourName}</h1><p className="text-sm text-muted-foreground">{when(e.startAt, e.timezone)}</p></header>
-      <p className="font-mono text-xs uppercase tracking-wide" role="status">{STATE[e.status] || e.status}{e.status === 'waiting' && e.position ? ` · position ${e.position}` : ''}</p>
+      <header className="space-y-1"><h1 className="text-2xl font-extrabold tracking-tight">{e.tourName}</h1><p className="text-sm text-muted-foreground">{when(e.startAt, e.timezone)}</p></header>
+      <p className="text-sm font-semibold" role="status">{STATE[e.status] || e.status}{e.status === 'waiting' && e.position ? ` · position ${e.position}` : ''}</p>
       <p className="text-sm">{e.guestName} · party of {e.seats}</p>
-      {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
       {e.status === 'waiting' && <p className="text-sm">When seats free up they are held for the next party on the list that fits. Come back to this link, or watch for our message.</p>}
       {e.status === 'offered' && (
         <section className="space-y-2 border-t pt-3" aria-label="Offer">

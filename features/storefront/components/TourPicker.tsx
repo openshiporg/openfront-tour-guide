@@ -24,7 +24,9 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
   const slots = day ? departures.filter((d) => dayOf(d.startAt) === new Intl.DateTimeFormat('en-CA').format(day)) : []
   const selected = departures.find((d) => d.id === departureId)
   const chosen = tour.ticketTypes.filter((t: any) => (qty[t.id] || 0) > 0)
-  const total = chosen.reduce((n: number, t: any) => n + t.priceCents * qty[t.id], 0) + tour.addOns.reduce((n: number, a: any) => n + a.priceCents * (addOns[a.id] || 0), 0)
+  // Prices can differ by date; the departure carries the price each ticket has on it.
+  const price = (t: any) => selected?.prices?.[t.id] ?? t.priceCents
+  const total = chosen.reduce((n: number, t: any) => n + price(t) * qty[t.id], 0) + tour.addOns.reduce((n: number, a: any) => n + a.priceCents * (addOns[a.id] || 0), 0)
 
   const reserve = async () => {
     setBusy(true); setError(null)
@@ -50,31 +52,33 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
   return (
     <div className="space-y-5">
       <section className="space-y-2">
-        <h2 className="text-base font-semibold">Date</h2>
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild><Button variant="outline" className="h-11">{day ? day.toDateString() : 'Choose a date'}</Button></PopoverTrigger>
+        <h2 className="text-base font-bold">{departures.length ? 'Choose a date' : 'No dates on sale'}</h2>
+        {!departures.length && <p className="text-sm text-[#0b2e1f]/75">Nothing is scheduled in the next 60 days.</p>}
+        {departures.length > 0 && <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild><Button variant="outline" className="h-11">{day ? day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Open calendar'}</Button></PopoverTrigger>
           <PopoverContent className="w-auto p-0"><Calendar classNames={{ day: 'size-11', day_button: 'size-11', weekday: 'size-11', button_previous: 'size-11', button_next: 'size-11', month_caption: 'h-11 mx-11' }} mode="single" selected={day} onSelect={(d) => { setDay(d); setDepartureId(''); if (d) setCalendarOpen(false) }} disabled={(d) => !days.has(new Intl.DateTimeFormat('en-CA').format(d))} /></PopoverContent>
-        </Popover>
+        </Popover>}
+        {day && <p className="pt-1 text-sm text-[#0b2e1f]/75">Times that day</p>}
         <div className="flex flex-wrap gap-2">
-          {slots.map((d) => <Button key={d.id} className="h-11" variant={departureId === d.id ? 'default' : 'outline'} onClick={() => { setDepartureId(d.id); setJoined(null) }}>{when(d.startAt).split(', ').pop()} · {d.remaining > 0 ? `${d.remaining} left` : 'full, waitlist'}</Button>)}
+          {slots.map((d) => <Button key={d.id} className="h-11" variant={departureId === d.id ? 'default' : 'outline'} onClick={() => { setDepartureId(d.id); setJoined(null) }}>{when(d.startAt).split(', ').pop()} · {d.remaining > 0 ? `${d.remaining} left` : 'full'}</Button>)}
         </div>
       </section>
       {selected && (
         <section className="space-y-3">
-          <h2 className="text-base font-semibold">Tickets</h2>
+          <h2 className="text-base font-bold">Tickets</h2>
           {tour.ticketTypes.map((t: any) => (
-            <div key={t.id} className="flex items-center justify-between gap-2"><span className="text-sm">{t.name} · {money(t.priceCents)}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${t.name}`} onClick={() => step(setQty, t.id, -1)}>−</Button><span className="w-6 text-center font-mono">{qty[t.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${t.name}`} onClick={() => step(setQty, t.id, 1)}>+</Button></span></div>
+            <div key={t.id} className="flex items-center justify-between gap-2"><span className="text-sm">{t.name} · {money(price(t), t.currencyCode)}{price(t) !== t.priceCents && <s className="ml-1 text-[#0b2e1f]/55">{money(t.priceCents, t.currencyCode)}</s>}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${t.name}`} onClick={() => step(setQty, t.id, -1)}>−</Button><span className="w-6 text-center font-mono">{qty[t.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${t.name}`} onClick={() => step(setQty, t.id, 1)}>+</Button></span></div>
           ))}
-          {tour.addOns.length > 0 && <h2 className="pt-2 text-base font-semibold">Add-ons</h2>}
+          {tour.addOns.length > 0 && <h2 className="pt-2 text-base font-bold">Add-ons</h2>}
           {tour.addOns.map((a: any) => (
-            <div key={a.id} className="flex items-center justify-between gap-2"><span className="text-sm">{a.name} · {money(a.priceCents)}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${a.name}`} onClick={() => step(setAddOns, a.id, -1)}>−</Button><span className="w-6 text-center font-mono">{addOns[a.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${a.name}`} onClick={() => step(setAddOns, a.id, 1)}>+</Button></span></div>
+            <div key={a.id} className="flex items-center justify-between gap-2"><span className="text-sm">{a.name} · {money(a.priceCents)}{a.perPerson ? ' each' : ''}</span><span className="flex items-center gap-2"><Button size="icon" className="size-11" variant="outline" aria-label={`Fewer ${a.name}`} onClick={() => step(setAddOns, a.id, -1)}>−</Button><span className="w-6 text-center font-mono">{addOns[a.id] || 0}</span><Button size="icon" className="size-11" variant="outline" aria-label={`More ${a.name}`} onClick={() => step(setAddOns, a.id, 1)}>+</Button></span></div>
           ))}
-          {!waitlist && <Input placeholder="Promo code" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} />}
-          {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+          {!waitlist && <Input aria-label="Promo code" placeholder="Promo code (optional)" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} />}
+          {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
           {!waitlist && <Button className="h-11 w-full" disabled={busy || !chosen.length} onClick={reserve}>Hold seats · {money(total)}</Button>}
           {waitlist && !joined && (
             <div className="space-y-2 border-t pt-3" aria-label="Waitlist">
-              <h2 className="text-base font-semibold">Join the waitlist</h2>
+              <h2 className="text-base font-bold">Join the waitlist</h2>
               <p className="text-sm">{selected.remaining > 0 ? `Only ${selected.remaining} seat${selected.remaining === 1 ? '' : 's'} left for a party of ${party}.` : 'This departure is full.'} If seats free up they are held for the next party on the list, in order, and you get a link to book them. Nothing is charged now.</p>
               <Input aria-label="Your name" placeholder="Your name" value={lead.name} onChange={(e) => setLead({ ...lead, name: e.target.value })} />
               <Input aria-label="Email" type="email" placeholder="Email" value={lead.email} onChange={(e) => setLead({ ...lead, email: e.target.value })} />
@@ -84,7 +88,7 @@ export function TourPicker({ tour, departures }: { tour: any; departures: any[] 
           )}
           {joined && (
             <div className="space-y-2 border-t pt-3" role="status" data-waitlist-joined>
-              <p className="font-mono text-xs uppercase tracking-wide text-emerald-700">On the waitlist · position {joined.position}</p>
+              <p className="text-sm font-semibold text-emerald-800">You are on the waitlist, position {joined.position}.</p>
               <p className="text-sm">Keep this private link. It shows your place and, when seats are held for you, lets you book them:</p>
               <p className="break-all font-mono text-sm"><a className="underline" href={joined.link}>{joined.link}</a></p>
             </div>

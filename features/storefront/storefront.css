@@ -1,0 +1,14 @@
+/* Shop-wide surfaces. The calendar popover renders outside the shop wrapper, so the colours sit on the body. */
+body:has(.shop) { --primary: #0f4a2f; --primary-foreground: #fff; --ring: #0f4a2f; --radius: 0.85rem; }
+.shop ::selection { background: #0f4a2f; color: #fff; }
+.shop { font-variant-numeric: tabular-nums; }
+.shop .font-mono { font-family: inherit; }
+/* Flat buttons: no gloss, no drop shadow. */
+.shop [data-slot='button'] { border-radius: 0.75rem; box-shadow: none; background-image: none; border-width: 1px; border-style: solid; }
+.shop [data-slot='button'][class*='from-primary'] { background-color: #0f4a2f; border-color: #0f4a2f; color: #fff; }
+.shop [data-slot='button'][class*='from-primary']:hover { background-color: #0b3a25; filter: none; }
+.shop [data-slot='button'][class*='from-destructive'] { background-color: #b42318; border-color: #b42318; }
+.shop [data-slot='button'][class*='bg-background'] { background-color: #fff; border-color: rgb(11 46 31 / 0.25); }
+.shop [data-slot='button'][class*='bg-background']:hover { border-color: #0f4a2f; }
+.shop [data-slot='input'], .shop textarea { background-color: #fff; border-color: rgb(11 46 31 / 0.2); box-shadow: none; }
+.shop a:focus-visible { outline: 2px solid #0f4a2f; outline-offset: 2px; border-radius: 4px; }

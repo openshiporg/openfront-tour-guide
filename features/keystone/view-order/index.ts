@@ -17,6 +17,7 @@ export const VIEW_ORDER = [
   "checkbox",
   "json",
   "integer",
+  "image",
   "virtual",
   "document"
 ];

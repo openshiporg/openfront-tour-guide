@@ -33,8 +33,8 @@ export function ManageBooking() {
   }, [load])
 
   if (link === undefined) return <p className="text-sm text-muted-foreground">Loading…</p>
-  if (link === null) return <div className="space-y-3"><h1 className="text-xl font-semibold">Manage your booking</h1><p className="text-sm">This page needs the private link from your confirmation. You can also <Link className="underline" href="/lookup">find your booking</Link> with its code and email.</p></div>
-  if (!b) return error ? <p className="text-sm text-rose-600" role="alert">{error}</p> : <p className="text-sm text-muted-foreground">Loading…</p>
+  if (link === null) return <div className="space-y-3"><h1 className="text-2xl font-extrabold tracking-tight">Manage your booking</h1><p className="text-sm">This page needs the private link from your confirmation. You can also <Link className="underline" href="/lookup">find your booking</Link> with its code and email.</p></div>
+  if (!b) return error ? <p className="text-sm text-rose-700" role="alert">{error}</p> : <p className="text-sm text-muted-foreground">Loading…</p>
 
   const run = async (f: () => Promise<any>, done: (r: any) => void) => {
     setBusy(true); setError(''); setNote('')
@@ -50,19 +50,19 @@ export function ManageBooking() {
 
   return (
     <div className="space-y-4">
-      <header className="space-y-1"><h1 className="text-xl font-semibold">{b.tourName}</h1><p className="text-sm text-muted-foreground">{when(b.startAt, b.timezone)}</p></header>
-      <p className="text-sm">Booking <span className="font-mono font-semibold">{b.bookingRef}</span> · {b.seats} seats · {money(b.totalCents, b.currencyCode)} · <span className="font-mono uppercase">{b.status}</span></p>
+      <header className="space-y-1"><h1 className="text-2xl font-extrabold tracking-tight">{b.tourName}</h1><p className="text-sm text-muted-foreground">{when(b.startAt, b.timezone)}</p></header>
+      <p className="text-sm">Booking code <span className="font-semibold">{b.bookingRef}</span> · {b.seats} {b.seats === 1 ? 'seat' : 'seats'} · {money(b.totalCents, b.currencyCode)} · <span className="font-semibold" data-booking-status={b.status}>{String(b.status).replaceAll('_', ' ')}</span></p>
       {b.meetingPoint && <p className="text-sm"><span className="font-medium">Meet at: </span>{b.meetingPoint.name}, {b.meetingPoint.address}</p>}
       <ul className="space-y-1 text-sm">{b.lines.map((l: any, i: number) => <li key={i}>{l.qty} × {l.name}</li>)}</ul>
       {note && <p className="text-sm text-emerald-700" role="status">{note}</p>}
-      {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-      <section className="space-y-1 border-t pt-3" aria-label="Cancellation policy"><h2 className="text-base font-semibold">Cancellation policy</h2><ul className="list-disc space-y-1 pl-5 text-sm">{b.policy.map((p: string) => <li key={p}>{p}</li>)}</ul></section>
+      {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
+      <section className="space-y-1 border-t pt-3" aria-label="Cancellation policy"><h2 className="text-base font-bold">Cancellation policy</h2><ul className="list-disc space-y-1 pl-5 text-sm">{b.policy.map((p: string) => <li key={p}>{p}</li>)}</ul></section>
       {!b.canChange && b.reason && <p className="border-t pt-3 text-sm" data-reason>{b.reason}</p>}
       {b.canChange && (
         <>
           <p className="text-sm text-muted-foreground">You can change or cancel online until {closes}.</p>
           <section className="space-y-2 border-t pt-3" aria-label="Reschedule">
-            <h2 className="text-base font-semibold">Move to another departure</h2>
+            <h2 className="text-base font-bold">Move to another departure</h2>
             {b.options.length === 0 ? <p className="text-sm text-muted-foreground">No other departure of this tour has room for your party at the same price.</p> : (
               <>
                 <p className="text-sm text-muted-foreground">Same tour, same price. Pick a new time:</p>
@@ -75,7 +75,7 @@ export function ManageBooking() {
           </section>
           <ChangeParty key={`${b.seats}:${b.totalCents}`} link={link} booking={b} onDone={async (n) => { await load(link); setNote(n) }} />
           <section className="space-y-2 border-t pt-3" aria-label="Cancel">
-            <h2 className="text-base font-semibold">Cancel</h2>
+            <h2 className="text-base font-bold">Cancel</h2>
             <p className="text-sm">If you cancel now you will be refunded <span className="font-mono">{money(b.refundIfCancelledCents, b.currencyCode)}</span> of {money(b.totalCents - b.refundedCents, b.currencyCode)}.</p>
             {!confirmCancel ? <Button className="h-11" variant="outline" onClick={() => setConfirmCancel(true)}>Cancel booking</Button> : (
               <div className="flex flex-wrap gap-2"><Button className="h-11" variant="destructive" onClick={cancel} disabled={busy}>Yes, cancel and refund {money(b.refundIfCancelledCents, b.currencyCode)}</Button><Button className="h-11" variant="outline" onClick={() => setConfirmCancel(false)} disabled={busy}>Keep my booking</Button></div>

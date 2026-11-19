@@ -57,19 +57,19 @@ export function ChangeParty({ link, booking, onDone }: { link: { bookingRef: str
   }
   if (pay) return (
     <section className="space-y-3 border-t pt-3" aria-label="Pay for the change">
-      <h2 className="text-base font-semibold">Pay the difference</h2>
+      <h2 className="text-base font-bold">Pay the difference</h2>
       <p className="text-sm">The added seats are held for you while you pay <span className="font-mono">{money(pay.collectCents)}</span>. Nothing changes until the payment goes through.</p>
-      {stripePromise && pay.clientSecret ? <Elements stripe={stripePromise} options={{ clientSecret: pay.clientSecret }}><PayDifference onPaid={paid} onError={setError} /></Elements> : <p className="text-sm text-rose-600">Card payments are not set up. Contact the operator.</p>}
-      {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+      {stripePromise && pay.clientSecret ? <Elements stripe={stripePromise} options={{ clientSecret: pay.clientSecret }}><PayDifference onPaid={paid} onError={setError} /></Elements> : <p className="text-sm text-rose-700">Card payments are not set up. Contact the operator.</p>}
+      {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
     </section>
   )
   return (
     <section className="space-y-3 border-t pt-3" aria-label="Change party">
-      <h2 className="text-base font-semibold">Change who is coming</h2>
+      <h2 className="text-base font-bold">Change who is coming</h2>
       <p className="text-sm text-muted-foreground">Untick someone to remove them, or add a person. People already booked keep the price they paid.</p>
       <PartyEditor people={booking.participants} tickets={booking.tickets || []} money={money} onChange={setDraft} />
       {q && <PartyQuoteSummary q={q} money={money} />}
-      {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
       <Button className="h-11" onClick={submit} disabled={!q || !q.roomForAdded || busy}>{busy ? 'Saving…' : q?.collectCents > 0 ? `Continue to pay ${money(q.collectCents)}` : q?.refundCents > 0 ? `Change and refund ${money(q.refundCents)}` : 'Save change'}</Button>
     </section>
   )

@@ -27,7 +27,7 @@ export function PartyEditor({ people, tickets, money, onChange }: { people: Part
             <input type="checkbox" checked={keep.includes(p.id)} disabled={p.checkedIn} onChange={() => toggle(p.id)} aria-label={`Keep ${p.fullName}`} />
             <span className="min-w-0 flex-1 truncate">{p.fullName}</span>
             {p.ticket && <span className="shrink-0 text-muted-foreground">{p.ticket}</span>}
-            {p.checkedIn && <span className="shrink-0 font-mono text-xs uppercase tracking-wide">checked in</span>}
+            {p.checkedIn && <span className="shrink-0 text-xs text-[#0b2e1f]/65">Checked in</span>}
           </label>
         ))}
       </fieldset>
@@ -57,7 +57,7 @@ export function PartyQuoteSummary({ q, money }: { q: any; money: (c: number) => 
       {q.refundCents > 0 && <p>To refund: <span className="font-mono font-semibold">{money(q.refundCents)}</span></p>}
       {q.keptCents > 0 && <p className="text-muted-foreground">{money(q.keptCents)} of the removed amount is kept under the cancellation policy.</p>}
       {q.collectCents === 0 && q.refundCents === 0 && q.keptCents === 0 && <p className="text-muted-foreground">No price difference.</p>}
-      {!q.roomForAdded && <p className="text-rose-600">This departure does not have room for the people added.</p>}
+      {!q.roomForAdded && <p className="text-rose-700">This departure does not have room for the people added.</p>}
     </div>
   )
 }

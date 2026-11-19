@@ -17,7 +17,10 @@ export async function expireStaleHolds(tx: any, departureId: string) {
   return ids.length;
 }
 export async function toursOnSale(_root: any, _args: any, context: any) {
-  return context.prisma.tour.findMany({ where: { status: 'active', departures: { some: { startAt: { gt: new Date() }, status: { in: ['on_sale','confirmed','min_not_met'] } } } }, select: { id: true, name: true, slug: true, description: true, durationMinutes: true, images: true, kind: true, minAge: true, highlights: true, whatToBring: true, meetingPoint: { select: { name: true, address: true, instructions: true } }, addOns: { select: { id: true, name: true, priceCents: true, perPerson: true } }, requiresWaiverId: true, cancellationPolicy: { select: { rules: true, weatherFullRefund: true } }, ticketTypes: { where: { active: true }, select: { id: true, name: true, priceCents: true, currencyCode: true } } }, take: 100 });
+  const tours = await context.prisma.tour.findMany({ where: { status: 'active', departures: { some: { startAt: { gt: new Date() }, status: { in: ['on_sale','confirmed','min_not_met'] } } } }, select: { id: true, name: true, slug: true, description: true, durationMinutes: true, durationDays: true, images: true, kind: true, minAge: true, fitnessLevel: true, highlights: true, inclusions: true, exclusions: true, whatToBring: true, meetingPoint: { select: { name: true, address: true, instructions: true, mapLink: true } }, addOns: { select: { id: true, name: true, priceCents: true, perPerson: true } }, requiresWaiverId: true, cancellationPolicy: { select: { rules: true, weatherFullRefund: true } }, ticketTypes: { where: { active: true }, select: { id: true, name: true, priceCents: true, currencyCode: true } } }, take: 100 });
+  // The uploaded photo is read through Keystone so the file store builds its address.
+  const photos = tours.length ? await context.sudo().query.Tour.findMany({ where: { id: { in: tours.map((t: any) => t.id) } }, query: 'id photo { url width height }' }).catch(() => []) : [];
+  return tours.map((t: any) => ({ ...t, photo: photos.find((p: any) => p.id === t.id)?.photo || null }));
 }
 export async function tourAvailability(_root: any, args: any, context: any) {
   const from = new Date(args.from), to = new Date(args.to);
@@ -32,12 +35,19 @@ export async function tourAvailability(_root: any, args: any, context: any) {
     context.prisma.booking.groupBy({ by: ['departureId', 'channelId'], where: { departureId: { in: ids }, channelId: { not: null }, status: { in: LIVE } }, _sum: { seats: true } }),
   ]);
   const sum = (rows: any[], id: string, key: string) => rows.find((r) => r.departureId === id)?._sum[key] || 0;
+  // What each ticket costs on each departure, by the same pricing rules the seat hold applies.
+  const [tour, tickets, pricingRules] = await Promise.all([
+    context.prisma.tour.findUnique({ where: { id: args.tourId }, select: { timezone: true } }),
+    context.prisma.ticketType.findMany({ where: { tourId: args.tourId, active: true }, select: { id: true, priceCents: true } }),
+    context.prisma.pricingRule.findMany({ where: { tourId: args.tourId } }),
+  ]);
+  const pricesFor = (startAt: Date) => Object.fromEntries(tickets.map((t: any) => [t.id, applyPricingRules(t.priceCents, t.id, startAt, tour?.timezone || 'America/New_York', pricingRules).unitPriceCents]));
   const result = [];
   for (const row of rows) {
     if (row.startAt.getTime() - row.bookingCutoffMinutes * 60000 <= Date.now()) continue;
     const far = row.startAt.getTime() - Date.now() > 86400000;
     const reserved = far ? channels.reduce((n: number, c: any) => n + Math.max(0, c.allocation - (channelSold.find((x: any) => x.departureId === row.id && x.channelId === c.id)?._sum.seats || 0)), 0) : 0;
-    result.push({ ...row, remaining: Math.max(0, row.capacity - sum(booked, row.id, 'seats') - sum(held, row.id, 'quantity') - reserved) });
+    result.push({ ...row, prices: pricesFor(row.startAt), remaining: Math.max(0, row.capacity - sum(booked, row.id, 'seats') - sum(held, row.id, 'quantity') - reserved) });
   }
   return result;
 }

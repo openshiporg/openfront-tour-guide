@@ -18,14 +18,14 @@ export function WaiverForm({ token, waiver }: { token: string; waiver: any }) {
   if (done) return <p className="text-sm">Waiver signed for {waiver.participantName}.</p>
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-semibold">{waiver.name}</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">{waiver.name}</h1>
       <p className="text-sm text-muted-foreground">{waiver.tourName} · {waiver.participantName} · version {waiver.version}</p>
       <p className="whitespace-pre-wrap rounded-lg border p-3 text-sm">{waiver.text}</p>
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={guardian} onCheckedChange={(v) => setGuardian(v === true)} />Signing as parent or guardian</label>
       {guardian && <Input placeholder="Minor's full name" value={minor} onChange={(e) => setMinor(e.target.value)} />}
       <Input placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={agree} onCheckedChange={(v) => setAgree(v === true)} />I have read and agree</label>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-700">{error}</p>}
       <Button className="h-11" disabled={!name || !agree || (guardian && !minor)} onClick={submit}>Sign</Button>
     </div>
   )

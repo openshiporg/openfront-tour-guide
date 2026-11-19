@@ -136,6 +136,11 @@ model Tour {
   exclusions             Json?
   whatToBring            String                        @default("")
   images                 Json?
+  photo_id               String?
+  photo_filesize         Int?
+  photo_width            Int?
+  photo_height           Int?
+  photo_extension        String?
   cancellationPolicy     CancellationPolicy?           @relation("Tour_cancellationPolicy", fields: [cancellationPolicyId], references: [id])
   cancellationPolicyId   String?                       @map("cancellationPolicy")
   requiresWaiver         WaiverTemplate?               @relation("Tour_requiresWaiver", fields: [requiresWaiverId], references: [id])
