@@ -97,7 +97,7 @@ export function BookingsClient({ rows, counts, active, thresholdCents, canRefund
                 <Popover>
                   <PopoverTrigger asChild><Button size="sm" variant="outline">Refund</Button></PopoverTrigger>
                   <PopoverContent className="w-72 space-y-2">
-                    <p className="text-sm text-muted-foreground">Refunds over {money(thresholdCents, 'USD')} need another manager&apos;s approval.</p>
+                    <p className="text-sm text-muted-foreground">Refunds that take a booking over {money(thresholdCents, 'USD')} in total need another manager&apos;s approval.</p>
                     <Input inputMode="decimal" placeholder={`Amount (max ${((b.totalCents - b.refundedCents) / 100).toFixed(2)})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
                     <Input placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
                     <Button size="sm" className="w-full" disabled={!reason.trim()} onClick={() => refund(b, false)}>Refund</Button>

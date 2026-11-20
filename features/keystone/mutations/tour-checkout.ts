@@ -230,6 +230,12 @@ export async function lookupBooking(_r: any, args: any, context: any) {
 // (newest first, see allocateRefund), one Refund row per leg. Reserving happens under the departure lock, in the caller's transaction when
 // the refund is part of a bigger change (reserveRefund), and the provider calls happen after it commits (settleRefund).
 type RefundArgs = { bookingId: string; amount: number; reason: string; key: string; actorId: string | null; cancel?: boolean; approvalId?: string | null; requestedById?: string | null; approvalThresholdCents?: number; tenderOnly?: boolean };
+// Money already returned or on its way back on this booking (failed legs gave nothing back). The approval threshold is checked against
+// this plus the new refund, so splitting a large refund into small ones still needs a second manager.
+export async function refundedSoFar(db: any, bookingId: string) {
+  const r = await db.refund.aggregate({ where: { orderId: bookingId, status: { not: 'failed' } }, _sum: { amount: true } });
+  return r._sum.amount || 0;
+}
 export async function issueRefund(prisma: any, a: RefundArgs) {
   const reservation = await prisma.$transaction(async (tx: any) => {
     const b = await tx.booking.findUnique({ where: { id: a.bookingId }, select: { departureId: true } });
@@ -251,7 +257,7 @@ export async function reserveRefund(tx: any, a: RefundArgs) {
   // The approval is consumed only after the lock, the replay check and amount validation, in this same transaction,
   // so a failed or replayed request never burns it.
   let approvedById: string | null = null;
-  if (a.approvalThresholdCents !== undefined && a.amount > a.approvalThresholdCents) {
+  if (a.approvalThresholdCents !== undefined && a.amount > 0 && await refundedSoFar(tx, live.id) + a.amount > a.approvalThresholdCents) {
     const approval = await consumeManagerApproval(tx, { actionType: 'refund_booking', targetId: live.id, reason: a.reason, amount: a.amount, approvalId: a.approvalId, actorId: a.actorId, entityType: 'Booking', entityId: live.id });
     approvedById = approval.approvedById;
   }
@@ -385,10 +391,10 @@ async function refundBookingInner(_r: any, args: any, context: any) {
   // unexpired request for this exact booking, amount and reason that THEY filed is used (consumeManagerApproval re-checks it all).
   let approvalId = i.approvalId;
   const replayed = !approvalId && await context.prisma.refund.findUnique({ where: { idempotencyKey: `refund:${args.idempotencyKey}` }, select: { id: true } }); // a retry of a committed refund: its approval is already consumed
-  if (!approvalId && !replayed && i.amountCents > (settings?.refundApprovalThresholdCents ?? 10000)) {
+  if (!approvalId && !replayed && i.amountCents > 0 && await refundedSoFar(context.prisma, booking.id) + i.amountCents > (settings?.refundApprovalThresholdCents ?? 10000)) {
     const match = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: booking.id, amount: i.amountCents, reason: String(i.reason).trim(), requestedById: user.id, status: 'approved', expiresAt: { gt: new Date() } }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
     approvalId = match?.id;
-    if (!approvalId) throw new Error('This refund is over the approval threshold. Request approval first: another manager must approve this exact amount and reason.');
+    if (!approvalId) throw new Error('This refund takes the booking over the approval threshold. Request approval first: another manager must approve this exact amount and reason.');
   }
   const result: any = await issueRefund(context.prisma, { bookingId: booking.id, amount: i.amountCents, reason: i.reason, key: `refund:${args.idempotencyKey}`, actorId: user.id, cancel: !!i.cancelBooking, approvalId, approvalThresholdCents: settings?.refundApprovalThresholdCents ?? 10000 });
   if (result.status !== 'succeeded') throw new Error(refundNotDone(result.status));

@@ -6,7 +6,7 @@ import { planTicketLines, partyTotals, settleChange, seatsOf, type TicketLine, t
 import { legWhere } from '../lib/tour-tender';
 import { createPayment, getPaymentStatus, cancelPayment } from '../utils/paymentProviderAdapter';
 import { getPublicPaymentProviderConfig } from '../utils/paymentProviderConfig';
-import { reserveRefund, settleRefund, issueRefund, refreshDepartureStatus } from './tour-checkout';
+import { reserveRefund, settleRefund, issueRefund, refreshDepartureStatus, refundedSoFar } from './tour-checkout';
 import { load, stage } from './tour-self-service';
 import { promoteWaitlist } from './tour-waitlist';
 
@@ -294,7 +294,7 @@ export async function bookingPartyQuote(_r: any, args: any, context: any) {
     await authorize(context, 'canManageBookings');
     const db = context.prisma, b = await bookingFor(db, String(args.bookingId || '')); staffGuard(b);
     const P = planChange(await pricing(db, b), b, args.input, false);
-    return { ...view(P, b.currencyCode), roomForAdded: await roomFor(db, b, P.addSeats), needsApproval: P.refundCents > P.refundThresholdCents };
+    return { ...view(P, b.currencyCode), roomForAdded: await roomFor(db, b, P.addSeats), needsApproval: P.refundCents > 0 && await refundedSoFar(db, b.id) + P.refundCents > P.refundThresholdCents };
   } catch (e) { throw userFacingError(e); }
 }
 export async function changeBookingParty(_r: any, args: any, context: any) {
@@ -315,7 +315,7 @@ export async function changeBookingParty(_r: any, args: any, context: any) {
     if (preview.refundCents > 0) {
       await authorize(context, 'canIssueRefunds');
       // Same rule as Refund: over the threshold the requester's own approved request for this exact amount and reason is used.
-      if (preview.refundCents > preview.refundThresholdCents) {
+      if (await refundedSoFar(context.prisma, b0.id) + preview.refundCents > preview.refundThresholdCents) {
         const match = await context.prisma.managerApproval.findFirst({ where: { actionType: 'refund_booking', targetId: b0.id, amount: preview.refundCents, reason, requestedById: user.id, status: 'approved', expiresAt: { gt: new Date() } }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
         approvalId = match?.id;
       }

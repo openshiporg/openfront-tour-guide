@@ -41,6 +41,15 @@ async function main() {
   assert.equal(replay.id, first.id);
   assert.equal(await prisma.refund.count({ where: { idempotencyKey: `rt-ok-${tag}` } }), 1);
   assert.equal((await prisma.booking.findUnique({ where: { id: booking.id } })).refundedCents, 15000);
+
+  // (c) Split refunds: $150 already refunded, so even $10 more takes the booking over the $100 threshold and needs approval.
+  await assert.rejects(() => issueRefund(prisma, { ...base, amount: 1000, key: `rt-split-${tag}`, approvalId: null }), /approval is required/);
+  const small = await prisma.booking.create({ data: { bookingRef: `RS-${tag}`, departureId: dep.id, guestName: 'Runtime', guestEmail: 'rt@t.example', status: 'confirmed', source: 'phone', totalCents: 14000, subtotalCents: 14000, seats: 1 } });
+  await prisma.payment.create({ data: { idempotencyKey: `rs-pay-${tag}`, amount: 14000, status: 'succeeded', paymentMethod: 'cash', orderId: small.id, processedAt: new Date() } });
+  const sb = { ...base, bookingId: small.id, approvalId: null };
+  assert.equal((await issueRefund(prisma, { ...sb, amount: 6000, key: `rs-a-${tag}` })).status, 'succeeded');
+  await assert.rejects(() => issueRefund(prisma, { ...sb, amount: 8000, key: `rs-b-${tag}` }), /approval is required/);
+  assert.equal((await prisma.booking.findUnique({ where: { id: small.id } })).refundedCents, 6000);
   console.log('refund approval runtime checks passed');
 }
 main().then(() => prisma.$disconnect(), async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
