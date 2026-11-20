@@ -30,7 +30,7 @@ export function CheckoutForm({ holdId, hold, publishableKey, photo, pickup }: { 
   const router = useRouter()
   const quote = hold.quote
   const tickets = quote.lines.filter((l: any) => l.kind === 'ticket')
-  const people: { ticketTypeId: string; label: string }[] = tickets.flatMap((l: any) => Array.from({ length: l.qty }, () => ({ ticketTypeId: l.catalogId as string, label: l.name as string })))
+  const people: { ticketTypeId: string; label: string; minAge?: number | null; maxAge?: number | null }[] = tickets.flatMap((l: any) => Array.from({ length: l.qty }, () => ({ ticketTypeId: l.catalogId as string, label: l.name as string, minAge: l.minAge, maxAge: l.maxAge })))
   const [lead, setLead] = React.useState({ name: '', email: '', phone: '', specialRequests: '', pickupLocation: '' })
   const [names, setNames] = React.useState<string[]>(people.map(() => ''))
   const [ages, setAges] = React.useState<string[]>(people.map(() => ''))
@@ -53,8 +53,23 @@ export function CheckoutForm({ holdId, hold, publishableKey, photo, pickup }: { 
   const stripePromise = React.useMemo(() => (publishableKey ? loadStripe(publishableKey) : null), [publishableKey])
   React.useEffect(() => { const tick = () => setLeft(Math.max(0, new Date(hold.expiresAt).getTime() - Date.now())); tick(); const t = setInterval(tick, 1000); return () => clearInterval(t) }, [hold.expiresAt])
 
+  // Names the first guest field that is blank (a name, or an age when the ticket has an age limit) or out of range and moves focus to it, instead of the server's generic refusal.
+  const missingGuest = () => {
+    for (let i = 0; i < people.length; i++) {
+      const p = people[i]
+      if (!(names[i] || (i === 0 ? lead.name : '')).trim()) return { id: `guest-${i}-name`, message: `Enter guest ${i + 1}'s name.` }
+      const age = ages[i].trim()
+      const limited = !!p.minAge || p.maxAge != null
+      if (!age) { if (limited) return { id: `guest-${i}-age`, message: `Enter guest ${i + 1}'s age.` }; continue }
+      if (!/^\d{1,3}$/.test(age) || Number(age) > 120) return { id: `guest-${i}-age`, message: `Enter guest ${i + 1}'s age as a whole number.` }
+      if ((p.minAge != null && Number(age) < p.minAge) || (p.maxAge != null && Number(age) > p.maxAge)) return { id: `guest-${i}-age`, message: `Guest ${i + 1} must be ${p.minAge != null && p.maxAge != null ? `${p.minAge} to ${p.maxAge}` : p.minAge != null ? `${p.minAge} or older` : `${p.maxAge} or younger`} for a ${p.label} ticket.` }
+    }
+    return null
+  }
   const begin = async () => {
     setError('')
+    const missing = missingGuest()
+    if (missing) { setError(missing.message); document.getElementById(missing.id)?.focus(); return }
     const r = await startCheckout({ holdId, lead: { name: lead.name, email: lead.email, phone: lead.phone || undefined, specialRequests: lead.specialRequests.trim() || undefined, pickupLocation: lead.pickupLocation.trim() || undefined }, giftCardCode: gift?.code || undefined, participants: people.map((p, i) => ({ ticketTypeId: p.ticketTypeId, fullName: names[i] || (i === 0 ? lead.name : ''), age: ages[i] ? Number(ages[i]) : undefined, dietary: notes[i].dietary.trim() || undefined, medicalNotes: notes[i].medicalNotes.trim() || undefined, email: i === 0 ? lead.email : undefined })) }, key.current)
     if (!r.ok) return setError(r.error)
     if (!r.checkout.clientSecret) { const done = await completeCheckout(r.checkout.bookingRef, `complete:${r.checkout.bookingRef}`); sessionStorage.setItem('tg_email', lead.email); return done.ok ? router.push(`/bookings/${r.checkout.bookingRef}`) : setError(done.error) }
@@ -83,7 +98,7 @@ export function CheckoutForm({ holdId, hold, publishableKey, photo, pickup }: { 
           <h2 className="pt-2 text-base font-bold">Guests</h2>
           {people.map((p, i) => (
             <div key={i} className="space-y-2">
-              <div className="grid grid-cols-[1fr_5rem] gap-2"><Input aria-label={`Guest ${i + 1} name`} placeholder={`Guest ${i + 1} (${p.label}) name`} value={names[i]} onChange={(e) => setNames(names.map((n, j) => (j === i ? e.target.value : n)))} /><Input aria-label={`Guest ${i + 1} age`} inputMode="numeric" placeholder="Age" value={ages[i]} onChange={(e) => setAges(ages.map((n, j) => (j === i ? e.target.value : n)))} /></div>
+              <div className="grid grid-cols-[1fr_5rem] gap-2"><Input id={`guest-${i}-name`} aria-label={`Guest ${i + 1} name`} placeholder={`Guest ${i + 1} (${p.label}) name`} value={names[i]} onChange={(e) => setNames(names.map((n, j) => (j === i ? e.target.value : n)))} /><Input id={`guest-${i}-age`} aria-label={`Guest ${i + 1} age`} inputMode="numeric" placeholder="Age" value={ages[i]} onChange={(e) => setAges(ages.map((n, j) => (j === i ? e.target.value : n)))} /></div>
               {!notes[i].open ? <button type="button" className="flex min-h-11 items-center text-sm underline underline-offset-4" onClick={() => note(i, { open: true })}>Add dietary or medical notes for guest {i + 1}</button> : (
                 <div className="grid gap-2 sm:grid-cols-2"><Input aria-label={`Guest ${i + 1} dietary needs`} placeholder="Dietary needs" value={notes[i].dietary} onChange={(e) => note(i, { dietary: e.target.value })} /><Input aria-label={`Guest ${i + 1} medical notes`} placeholder="Medical notes for the guide" value={notes[i].medicalNotes} onChange={(e) => note(i, { medicalNotes: e.target.value })} /></div>
               )}
@@ -99,7 +114,7 @@ export function CheckoutForm({ holdId, hold, publishableKey, photo, pickup }: { 
             )}
             {giftError && <p className="text-sm text-rose-700">{giftError}</p>}
           </div>
-          {error && <p className="text-sm text-rose-700">{error}</p>}
+          {error && <p className="text-sm text-rose-700" role="alert">{error}</p>}
           <Button className="h-11 w-full" disabled={left === 0 || !lead.name || !lead.email} onClick={begin}>{giftCents >= quote.totalCents && quote.totalCents > 0 ? 'Book with gift card' : 'Continue to payment'}</Button>
         </div>
       ) : stripePromise ? (
