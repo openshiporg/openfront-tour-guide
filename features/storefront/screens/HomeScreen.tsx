@@ -23,11 +23,17 @@ export async function HomeScreen() {
   const points = meetingPoints(tours)
   return (
     <div className="space-y-12 px-5 pb-8 pt-4 sm:space-y-16 sm:pt-8">
-      <section>
-        <h1 className="max-w-2xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Book a tour with {name}</h1>
-        <p className="mt-4 max-w-xl text-base text-[#0b2e1f]/75">
-          {tours.length ? `${tours.length} ${tours.length === 1 ? 'tour is' : 'tours are'} on sale. Pick one, choose a time and book your seats online.` : 'No tours are on sale right now.'} Already booked? <Link href="/lookup" className="underline underline-offset-4">Find your booking</Link>.
-        </p>
+      <section className="relative isolate overflow-hidden rounded-2xl bg-[#0b2e1f] text-white">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/storefront/harbor.webp" alt="" width={1600} height={800} loading="eager" className="absolute inset-0 -z-10 size-full object-cover" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#0b2e1f]/85 via-[#0b2e1f]/45 to-[#0b2e1f]/10 sm:bg-gradient-to-r sm:from-[#0b2e1f]/85 sm:via-[#0b2e1f]/40 sm:to-transparent" />
+        <div className="flex min-h-[26rem] max-w-xl flex-col justify-end p-6 sm:min-h-[30rem] sm:justify-center sm:p-10">
+          <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Book a tour with {name}</h1>
+          <p className="mt-4 text-base text-white/90">
+            {tours.length ? `${tours.length} ${tours.length === 1 ? 'tour is' : 'tours are'} on sale. Pick one, choose a time and book your seats online.` : 'No tours are on sale right now.'} Already booked? <Link href="/lookup" className="underline underline-offset-4">Find your booking</Link>.
+          </p>
+          {tours.length > 0 && <a href="#tours" className="mt-6 inline-flex min-h-11 w-fit items-center rounded-xl bg-white px-5 text-sm font-semibold text-[#0b2e1f]">See the tours</a>}
+        </div>
       </section>
 
       {lead && (
